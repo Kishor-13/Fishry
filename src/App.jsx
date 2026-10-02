@@ -81,10 +81,33 @@ export default function App() {
     setFeedHistory([]);
   };
 
+  const [selectedPondForCalc, setSelectedPondForCalc] = useState(null);
+  const [autoOpenAddPond, setAutoOpenAddPond] = useState(false);
+
+  const handleCalculateForPond = (pond) => {
+    setSelectedPondForCalc(pond?.id || null);
+    setActiveTab('calculator');
+  };
+
+  const handleNavigateToPonds = (openAddModal = false) => {
+    setAutoOpenAddPond(openAddModal);
+    setActiveTab('ponds');
+  };
+
   // Feed Record Handlers
   const handleSaveRecord = async (record) => {
     const saved = await saveFeedRecord(record, currentUser?.id);
     setFeedHistory((prev) => [saved, ...prev.filter((r) => r.id !== saved.id)]);
+
+    // Synchronize pond's current weight if updated in feed calculator
+    if (record.pond_id && record.average_weight) {
+      const pond = ponds.find((p) => String(p.id) === String(record.pond_id));
+      if (pond && Number(record.average_weight) !== Number(pond.average_weight_g)) {
+        const updatedPond = { ...pond, average_weight_g: Number(record.average_weight) };
+        await handleSavePond(updatedPond);
+      }
+    }
+
     return saved;
   };
 
@@ -151,10 +174,14 @@ export default function App() {
             lang={lang}
             feedHistory={feedHistory}
             ponds={ponds}
-            onNavigateToCalculator={() => setActiveTab('calculator')}
+            onNavigateToCalculator={() => {
+              setSelectedPondForCalc(null);
+              setActiveTab('calculator');
+            }}
             onNavigateToHistory={() => setActiveTab('history')}
-            onNavigateToPonds={() => setActiveTab('ponds')}
+            onNavigateToPonds={handleNavigateToPonds}
             onNavigateToFCR={() => setActiveTab('fcr')}
+            onCalculateForPond={handleCalculateForPond}
           />
         )}
 
@@ -162,7 +189,12 @@ export default function App() {
           <FeedCalculator
             lang={lang}
             rulesList={rulesList}
+            ponds={ponds}
+            initialPondId={selectedPondForCalc}
             onSaveRecord={handleSaveRecord}
+            onNavigateToDashboard={() => setActiveTab('dashboard')}
+            onNavigateToHistory={() => setActiveTab('history')}
+            onNavigateToPonds={() => handleNavigateToPonds(false)}
           />
         )}
 
@@ -178,13 +210,21 @@ export default function App() {
           <PondManagement
             lang={lang}
             ponds={ponds}
+            autoOpenAdd={autoOpenAddPond}
+            onClearAutoOpen={() => setAutoOpenAddPond(false)}
             onSavePond={handleSavePond}
             onDeletePond={handleDeletePond}
+            onCalculateForPond={handleCalculateForPond}
           />
         )}
 
         {activeTab === 'fcr' && (
-          <FCRModule lang={lang} />
+          <FCRModule
+            lang={lang}
+            ponds={ponds}
+            feedHistory={feedHistory}
+            onNavigateToCalculator={handleCalculateForPond}
+          />
         )}
 
         {activeTab === 'help' && (

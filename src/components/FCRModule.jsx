@@ -8,13 +8,21 @@ import {
   Layers, 
   ArrowRight,
   ShieldCheck,
-  Package
+  Package,
+  Waves
 } from 'lucide-react';
 import { translations } from '../lib/translations';
 import { formatDisplayNumber } from '../lib/ruleEngine';
 
-export default function FCRModule({ lang }) {
+export default function FCRModule({ 
+  lang, 
+  ponds = [], 
+  feedHistory = [], 
+  onNavigateToCalculator 
+}) {
   const t = translations[lang];
+
+  const [selectedPondId, setSelectedPondId] = useState('');
 
   // Inputs
   const [feedGivenKg, setFeedGivenKg] = useState('1500');
@@ -34,6 +42,33 @@ export default function FCRModule({ lang }) {
     setFeedBags(val);
     const num = Number(val) || 0;
     setFeedGivenKg((num * 40).toString());
+  };
+
+  const handlePondSelect = (pId) => {
+    setSelectedPondId(pId);
+    if (!pId) return;
+
+    const p = ponds.find((item) => String(item.id) === String(pId));
+    if (p) {
+      // 1. Initial Biomass: (Stocking Count * 10g) / 1000 or fallback
+      const initBio = Math.round((Number(p.stocking_count || 1000) * 10) / 1000);
+      setInitialBiomass(String(initBio > 0 ? initBio : 50));
+
+      // 2. Final Biomass from pond's average weight & survival
+      const finBio = Math.round(
+        ((Number(p.stocking_count || 1000) * Number(p.survival_percent || 85)) / 100 * Number(p.average_weight_g || 100)) / 1000
+      );
+      setFinalBiomass(String(finBio > (initBio || 50) ? finBio : (initBio || 50) + 200));
+
+      // 3. Sum of feed history for this pond
+      const pondRecords = feedHistory.filter((r) => String(r.pond_id) === String(pId));
+      if (pondRecords.length > 0) {
+        const totalFeed = pondRecords.reduce((acc, curr) => acc + (Number(curr.daily_feed) || 0), 0);
+        if (totalFeed > 0) {
+          handleKgChange(totalFeed.toFixed(1));
+        }
+      }
+    }
   };
 
   // Calculation
@@ -134,6 +169,30 @@ export default function FCRModule({ lang }) {
 
           <div className="space-y-4">
             
+            {/* Optional: Load From Saved Pond */}
+            {ponds && ponds.length > 0 && (
+              <div className="p-3 bg-teal-50/70 border border-teal-200 rounded-2xl space-y-1.5 shadow-xs">
+                <label className="block text-xs font-bold text-teal-950 flex items-center gap-1.5">
+                  <Waves className="w-4 h-4 text-teal-600" />
+                  <span>{lang === 'mr' ? 'नोंदवलेले तळे निवडा (माहिती आपोआप भरा)' : 'Auto-fill from Saved Pond'}</span>
+                </label>
+                <select
+                  value={selectedPondId}
+                  onChange={(e) => handlePondSelect(e.target.value)}
+                  className="w-full h-10 px-3 rounded-xl bg-white border border-teal-300 text-slate-900 font-semibold text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 shadow-xs cursor-pointer"
+                >
+                  <option value="">
+                    {lang === 'mr' ? '-- तळे निवडा किंवा खाली स्वतः भरा --' : '-- Choose a Pond or Enter Manually Below --'}
+                  </option>
+                  {ponds.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} ({p.species || 'Fish'} • {formatDisplayNumber(p.stocking_count, 0)} {lang === 'mr' ? 'मासे' : 'fish'})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             {/* Feed Given with kg/bags switch */}
             <div>
               <div className="flex items-center justify-between mb-1.5">

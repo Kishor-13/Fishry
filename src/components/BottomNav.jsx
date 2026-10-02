@@ -6,9 +6,9 @@ export default function BottomNav({ activeTab, setActiveTab, lang }) {
 
   const navItems = [
     { id: 'dashboard', label: t.nav.dashboard, shortLabel: lang === 'mr' ? 'डॅशबोर्ड' : 'Home', icon: Home },
+    { id: 'ponds', label: t.nav.ponds, shortLabel: lang === 'mr' ? 'तळी' : 'Ponds', icon: Waves },
     { id: 'calculator', label: t.nav.calculator, shortLabel: lang === 'mr' ? 'खाद्य गणक' : 'Calc', icon: Calculator, isPrimary: true },
     { id: 'history', label: t.nav.history, shortLabel: lang === 'mr' ? 'इतिहास' : 'History', icon: History },
-    { id: 'ponds', label: t.nav.ponds, shortLabel: lang === 'mr' ? 'तळी' : 'Ponds', icon: Waves },
     { id: 'fcr', label: t.nav.fcr, shortLabel: 'FCR', icon: Scale },
     { id: 'help', label: t.nav.help, shortLabel: lang === 'mr' ? 'मदत' : 'Help', icon: BookOpen },
   ];

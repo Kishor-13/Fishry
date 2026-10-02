@@ -14,7 +14,12 @@ import {
   Sparkles,
   HelpCircle,
   Clock,
-  Layers
+  Layers,
+  Waves,
+  Home,
+  ArrowRight,
+  X,
+  ChevronRight
 } from 'lucide-react';
 import { SPECIES_LIST, CULTURE_STAGES } from '../data/speciesData';
 import { calculateFeed } from '../services/calculationService';
@@ -24,22 +29,63 @@ import { translations } from '../data/translations';
 export default function FeedCalculator({
   lang,
   rulesList,
+  ponds = [],
+  initialPondId = null,
   onSaveRecord,
+  onNavigateToDashboard,
+  onNavigateToHistory,
+  onNavigateToPonds,
 }) {
   const t = translations[lang];
 
   // Farmer Observation Inputs
+  const [selectedPondId, setSelectedPondId] = useState(initialPondId || '');
   const [selectedSpeciesId, setSelectedSpeciesId] = useState('rohu');
+  const [cultureStage, setCultureStage] = useState('Rearing');
   const [stocked, setStocked] = useState('');
   const [survivalPercent, setSurvivalPercent] = useState('85');
   const [averageWeight, setAverageWeight] = useState('');
-  const [feedPrice, setFeedPrice] = useState('');
+  const [feedPrice, setFeedPrice] = useState('40');
   const [cultureMonth, setCultureMonth] = useState('1');
   const [manualRate, setManualRate] = useState('');
 
   // UI state
   const [isSaved, setIsSaved] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [savedModalInfo, setSavedModalInfo] = useState(null);
+
+  // If initialPondId changes, auto-load that pond
+  useEffect(() => {
+    if (initialPondId && ponds && ponds.length > 0) {
+      handlePondSelect(initialPondId);
+    }
+  }, [initialPondId, ponds]);
+
+  // Handle Pond Selection
+  const handlePondSelect = (pondId) => {
+    setSelectedPondId(pondId);
+    setIsSaved(false);
+
+    if (!pondId) return;
+
+    const p = ponds.find((item) => String(item.id) === String(pondId));
+    if (p) {
+      // Find matching species
+      const matchedSpecies = SPECIES_LIST.find(
+        (s) => s.name.toLowerCase() === (p.species || '').toLowerCase() || s.id === (p.species || '').toLowerCase()
+      );
+      if (matchedSpecies) {
+        setSelectedSpeciesId(matchedSpecies.id);
+      } else if (p.species) {
+        setSelectedSpeciesId('custom');
+      }
+
+      if (p.culture_stage) setCultureStage(p.culture_stage);
+      if (p.stocking_count) setStocked(String(p.stocking_count));
+      if (p.survival_percent) setSurvivalPercent(String(p.survival_percent));
+      if (p.average_weight_g) setAverageWeight(String(p.average_weight_g));
+    }
+  };
 
   // Find species object
   const currentSpeciesObj = useMemo(() => {
@@ -99,6 +145,7 @@ export default function FeedCalculator({
 
   // Quick Preset Sample Loader (For convenient verification of Section 28 & 29)
   const loadRohuPreset = () => {
+    setSelectedPondId('');
     setSelectedSpeciesId('rohu');
     setCultureStage('Rearing');
     setStocked('10000');
@@ -109,6 +156,7 @@ export default function FeedCalculator({
   };
 
   const loadCustomPreset = () => {
+    setSelectedPondId('');
     setSelectedSpeciesId('custom');
     setCultureStage('Grow-out');
     setStocked('5000');
@@ -119,12 +167,13 @@ export default function FeedCalculator({
   };
 
   const handleReset = () => {
+    setSelectedPondId('');
     setSelectedSpeciesId('rohu');
     setCultureStage('Rearing');
     setStocked('');
-    setSurvivalPercent('');
+    setSurvivalPercent('85');
     setAverageWeight('');
-    setFeedPrice('');
+    setFeedPrice('40');
     setCultureMonth('1');
     setManualRate('');
     setIsSaved(false);
@@ -132,6 +181,8 @@ export default function FeedCalculator({
 
   const handleSave = async () => {
     if (!calculationResult.isValid || isSaving) return;
+
+    const selectedPondObj = ponds.find((p) => String(p.id) === String(selectedPondId));
 
     setIsSaving(true);
     try {
@@ -156,8 +207,18 @@ export default function FeedCalculator({
         feed_price: Number(feedPrice) || 0,
         feed_cost: calculationResult.dailyFeedCost,
         rule_id: calculationResult.rule?.id || null,
+        pond_id: selectedPondId || null,
+        pond_name: selectedPondObj ? selectedPondObj.name : '',
       });
       setIsSaved(true);
+      setSavedModalInfo({
+        pondName: selectedPondObj ? selectedPondObj.name : currentSpeciesObj.name,
+        dailyFeed: calculationResult.dailyFeed,
+        morningFeed: calculationResult.morningFeed,
+        eveningFeed: calculationResult.eveningFeed,
+        dailyCost: calculationResult.dailyFeedCost,
+        species: currentSpeciesObj.name,
+      });
       setTimeout(() => setIsSaved(false), 4000);
     } catch (err) {
       console.error('Error saving record:', err);
@@ -224,6 +285,42 @@ export default function FeedCalculator({
 
           <div className="space-y-4 text-left">
             
+            {/* Optional: Select From Saved Ponds */}
+            {ponds && ponds.length > 0 && (
+              <div className="p-3.5 bg-gradient-to-r from-sky-50 to-teal-50/70 border border-sky-200 rounded-2xl space-y-1.5 shadow-xs">
+                <div className="flex items-center justify-between">
+                  <label htmlFor="pondSelect" className="block text-xs font-extrabold text-sky-950 flex items-center gap-1.5">
+                    <Waves className="w-4 h-4 text-sky-600" />
+                    <span>{lang === 'mr' ? 'नोंदवलेले तळे निवडा (माहिती आपोआप भरा)' : 'Select Saved Pond (Auto-fill)'}</span>
+                  </label>
+                  {selectedPondId && (
+                    <button
+                      type="button"
+                      onClick={() => handleReset()}
+                      className="text-[11px] text-sky-700 font-bold hover:underline cursor-pointer"
+                    >
+                      {lang === 'mr' ? 'तळे रद्द करा' : 'Clear Pond'}
+                    </button>
+                  )}
+                </div>
+                <select
+                  id="pondSelect"
+                  value={selectedPondId}
+                  onChange={(e) => handlePondSelect(e.target.value)}
+                  className="w-full h-11 px-3 rounded-xl bg-white border border-sky-300 text-slate-900 font-bold text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 shadow-xs cursor-pointer"
+                >
+                  <option value="">
+                    {lang === 'mr' ? '-- तळे निवडा किंवा खाली स्वतः भरा --' : '-- Choose a Pond or Enter Observations Below --'}
+                  </option>
+                  {ponds.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} ({p.species || 'Fish'} • {formatDisplayNumber(p.stocking_count, 0)} {lang === 'mr' ? 'मासे' : 'fish'} • {p.average_weight_g || 0}g)
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             {/* 1. Fish Species Dropdown */}
             <div>
               <label htmlFor="speciesSelect" className="block text-xs sm:text-sm font-bold text-slate-800 mb-1.5">
@@ -897,6 +994,99 @@ export default function FeedCalculator({
                 </>
               )}
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* POST-CALCULATION SUCCESS & NEXT STEPS MODAL */}
+      {savedModalInfo && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 text-center">
+            <div className="w-14 h-14 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center mx-auto shadow-inner">
+              <CheckCircle2 className="w-8 h-8" />
+            </div>
+
+            <div className="space-y-1">
+              <h3 className="text-lg font-extrabold text-slate-900">
+                {lang === 'mr' ? 'दैनिक नोंद यशस्वीरित्या जतन झाली!' : 'Daily Feed Logged Successfully!'}
+              </h3>
+              <p className="text-xs text-slate-500 font-medium">
+                {savedModalInfo.pondName} • {savedModalInfo.species}
+              </p>
+            </div>
+
+            {/* Quick Numbers Card */}
+            <div className="bg-emerald-50/80 border border-emerald-200 rounded-2xl p-3.5 space-y-2 text-left">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-emerald-800 font-bold">{lang === 'mr' ? 'आजचे एकूण खाद्य:' : "Today's Total Feed:"}</span>
+                <span className="text-base font-extrabold text-emerald-950">{formatDisplayNumber(savedModalInfo.dailyFeed, 2)} kg</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-[11px] pt-2 border-t border-emerald-200/60">
+                <div>
+                  <span className="text-slate-500 block">{lang === 'mr' ? 'सकाळ (५०%):' : 'Morning (50%):'}</span>
+                  <span className="font-bold text-slate-800">{formatDisplayNumber(savedModalInfo.morningFeed, 2)} kg</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 block">{lang === 'mr' ? 'संध्याकाळ (५०%):' : 'Evening (50%):'}</span>
+                  <span className="font-bold text-slate-800">{formatDisplayNumber(savedModalInfo.eveningFeed, 2)} kg</span>
+                </div>
+              </div>
+              {savedModalInfo.dailyCost > 0 && (
+                <div className="flex items-center justify-between pt-1 text-xs text-emerald-900 font-extrabold">
+                  <span>{lang === 'mr' ? 'अंदाजित खर्च:' : 'Estimated Cost:'}</span>
+                  <span>₹{formatDisplayNumber(savedModalInfo.dailyCost, 0)}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Navigation Choices */}
+            <div className="pt-2 space-y-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setSavedModalInfo(null);
+                  if (onNavigateToDashboard) onNavigateToDashboard();
+                }}
+                className="w-full py-3 px-4 rounded-xl bg-teal-600 hover:bg-teal-700 active:scale-98 text-white font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer"
+              >
+                <Home className="w-4 h-4" />
+                <span>{lang === 'mr' ? 'डॅशबोर्डवर जा (आजची स्थिती पहा)' : 'Go to Dashboard (View Today)'}</span>
+                <ArrowRight className="w-4 h-4 ml-auto" />
+              </button>
+
+              {ponds && ponds.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSavedModalInfo(null);
+                    handleReset();
+                  }}
+                  className="w-full py-2.5 px-4 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-800 font-bold text-xs flex items-center justify-center gap-2 border border-sky-200 transition-all cursor-pointer"
+                >
+                  <Waves className="w-4 h-4" />
+                  <span>{lang === 'mr' ? 'दुसऱ्या तळ्याची गणना करा' : 'Calculate for Another Pond'}</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => {
+                  setSavedModalInfo(null);
+                  if (onNavigateToHistory) onNavigateToHistory();
+                }}
+                className="w-full py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
+              >
+                <span>{lang === 'mr' ? 'खाद्य इतिहास पहा' : 'View Feed History'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSavedModalInfo(null)}
+                className="py-1 text-[11px] text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                {lang === 'mr' ? 'येथेच राहा (कॅल्क्युलेटर)' : 'Stay on Calculator'}
+              </button>
+            </div>
           </div>
         </div>
       )}

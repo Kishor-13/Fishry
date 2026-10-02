@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Waves, 
   Plus, 
@@ -10,7 +10,10 @@ import {
   Layers, 
   Scale, 
   Compass, 
-  AlertCircle 
+  AlertCircle,
+  Calculator,
+  ArrowRight,
+  CheckCircle2
 } from 'lucide-react';
 import { translations } from '../lib/translations';
 import { SPECIES_LIST, CULTURE_STAGES } from '../constants/speciesData';
@@ -19,14 +22,18 @@ import { formatDisplayNumber } from '../lib/ruleEngine';
 export default function PondManagement({
   lang,
   ponds = [],
+  autoOpenAdd = false,
+  onClearAutoOpen,
   onSavePond,
   onDeletePond,
+  onCalculateForPond,
 }) {
   const t = translations[lang];
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPond, setEditingPond] = useState(null);
   const [pondToDelete, setPondToDelete] = useState(null);
+  const [newlySavedPond, setNewlySavedPond] = useState(null);
 
   // Form states
   const [name, setName] = useState('');
@@ -38,6 +45,14 @@ export default function PondManagement({
   const [survivalPercent, setSurvivalPercent] = useState('85');
   const [averageWeightG, setAverageWeightG] = useState('');
   const [notes, setNotes] = useState('');
+
+  // Auto-open modal if directed from dashboard
+  useEffect(() => {
+    if (autoOpenAdd) {
+      openAddModal();
+      if (onClearAutoOpen) onClearAutoOpen();
+    }
+  }, [autoOpenAdd]);
 
   const openAddModal = () => {
     setEditingPond(null);
@@ -91,8 +106,11 @@ export default function PondManagement({
       notes,
     };
 
-    await onSavePond(pondData);
+    const saved = await onSavePond(pondData);
     setIsModalOpen(false);
+    if (!editingPond) {
+      setNewlySavedPond(saved || pondData);
+    }
   };
 
   const confirmDelete = async () => {
@@ -125,6 +143,47 @@ export default function PondManagement({
           <span>{t.ponds.addPond}</span>
         </button>
       </div>
+
+      {/* Newly Added Pond Action Prompt */}
+      {newlySavedPond && (
+        <div className="p-4 bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-300 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs animate-fadeIn">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
+              <CheckCircle2 className="w-6 h-6" />
+            </div>
+            <div>
+              <h4 className="text-sm font-extrabold text-emerald-950">
+                {lang === 'mr' ? `तळे "${newlySavedPond.name}" यशस्वीरित्या जोडले गेले!` : `Pond "${newlySavedPond.name}" Saved Successfully!`}
+              </h4>
+              <p className="text-xs text-emerald-800/90">
+                {lang === 'mr' ? 'आता या तळ्यासाठी आजचे दैनिक खाद्य मोजा:' : 'Now calculate today’s daily feed for this pond:'}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                const target = newlySavedPond;
+                setNewlySavedPond(null);
+                if (onCalculateForPond) onCalculateForPond(target);
+              }}
+              className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs cursor-pointer active:scale-95"
+            >
+              <Calculator className="w-4 h-4" />
+              <span>{lang === 'mr' ? 'दैनिक खाद्य गणना करा' : 'Calculate Daily Feed'}</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setNewlySavedPond(null)}
+              className="p-2 text-slate-400 hover:text-slate-600 cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Independent Note Banner (Section 33) */}
       <div className="p-3 bg-teal-50 border border-teal-200 rounded-2xl text-xs text-teal-900 font-medium">
@@ -216,6 +275,17 @@ export default function PondManagement({
                     {formatDisplayNumber(biomassKg, 1)} kg <span className="text-[10px] font-normal text-slate-400">biomass</span>
                   </span>
                 </div>
+
+                {/* Calculate Daily Feed Action */}
+                <button
+                  type="button"
+                  onClick={() => onCalculateForPond && onCalculateForPond(pond)}
+                  className="w-full mt-2.5 py-2 px-3 rounded-xl bg-teal-600 hover:bg-teal-700 active:scale-98 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer"
+                >
+                  <Calculator className="w-4 h-4" />
+                  <span>{lang === 'mr' ? 'दैनिक खाद्य गणना करा' : 'Calculate Daily Feed'}</span>
+                  <ArrowRight className="w-4 h-4 ml-auto" />
+                </button>
               </div>
             );
           })}
