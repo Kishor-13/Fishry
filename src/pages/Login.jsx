@@ -14,7 +14,7 @@ import {
   HelpCircle
 } from 'lucide-react';
 import { translations } from '../data/translations';
-import { loginUser, registerUser, loginAsDemoFarmer, loginAsGuest } from '../services/authService';
+import { loginUser, registerUser, loginAsDemoFarmer, loginAsGuest, normalizeMobile } from '../services/authService';
 
 export default function Login({ lang, setLang, onLoginSuccess }) {
   const t = translations[lang];
@@ -27,6 +27,7 @@ export default function Login({ lang, setLang, onLoginSuccess }) {
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
+  const [errorState, setErrorState] = useState(null); // { type: 'MOBILE_NOT_REGISTERED' | 'MOBILE_ALREADY_REGISTERED', mobile }
   const [isLoading, setIsLoading] = useState(false);
 
   // Switch language
@@ -36,19 +37,21 @@ export default function Login({ lang, setLang, onLoginSuccess }) {
   };
 
   const handleMobileChange = (e) => {
-    // Only allow digits and max 10 digits
-    const digits = e.target.value.replace(/\D/g, '').slice(0, 10);
-    setMobile(digits);
+    const raw = e.target.value;
+    const clean = normalizeMobile(raw);
+    setMobile(clean);
     setErrorMsg('');
+    setErrorState(null);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setErrorMsg('');
+    setErrorState(null);
 
     // Validation
-    const cleanMobile = mobile.trim();
-    if (cleanMobile.length !== 10) {
+    const cleanMobile = normalizeMobile(mobile);
+    if (!cleanMobile || cleanMobile.length !== 10) {
       setErrorMsg(t.auth.errMobile);
       return;
     }
@@ -70,6 +73,13 @@ export default function Login({ lang, setLang, onLoginSuccess }) {
         const res = await loginUser({ mobile: cleanMobile, password });
         if (res.success) {
           onLoginSuccess(res.user);
+        } else if (res.error === 'MOBILE_NOT_REGISTERED') {
+          setErrorState({
+            type: 'MOBILE_NOT_REGISTERED',
+            mobile: res.cleanMobile,
+          });
+        } else if (res.error === 'INCORRECT_PASSWORD') {
+          setErrorMsg(t.auth.errIncorrectPassword || t.auth.errInvalidCredentials);
         } else {
           setErrorMsg(t.auth.errInvalidCredentials);
         }
@@ -82,8 +92,13 @@ export default function Login({ lang, setLang, onLoginSuccess }) {
         });
         if (res.success) {
           onLoginSuccess(res.user);
+        } else if (res.error === 'MOBILE_ALREADY_REGISTERED') {
+          setErrorState({
+            type: 'MOBILE_ALREADY_REGISTERED',
+            mobile: res.cleanMobile,
+          });
         } else {
-          setErrorMsg(t.auth.errInvalidCredentials);
+          setErrorMsg(res.message || t.auth.errInvalidCredentials);
         }
       }
     } catch (err) {
@@ -168,8 +183,8 @@ export default function Login({ lang, setLang, onLoginSuccess }) {
           <div className="grid grid-cols-2 p-1 bg-slate-100 rounded-2xl">
             <button
               type="button"
-              onClick={() => { setMode('login'); setErrorMsg(''); }}
-              className={`py-2 text-xs sm:text-sm font-bold rounded-xl transition-all ${
+              onClick={() => { setMode('login'); setErrorMsg(''); setErrorState(null); }}
+              className={`py-2 text-xs sm:text-sm font-bold rounded-xl transition-all cursor-pointer ${
                 mode === 'login'
                   ? 'bg-white text-teal-900 shadow-sm'
                   : 'text-slate-500 hover:text-slate-800'
@@ -182,8 +197,8 @@ export default function Login({ lang, setLang, onLoginSuccess }) {
             </button>
             <button
               type="button"
-              onClick={() => { setMode('signup'); setErrorMsg(''); }}
-              className={`py-2 text-xs sm:text-sm font-bold rounded-xl transition-all ${
+              onClick={() => { setMode('signup'); setErrorMsg(''); setErrorState(null); }}
+              className={`py-2 text-xs sm:text-sm font-bold rounded-xl transition-all cursor-pointer ${
                 mode === 'signup'
                   ? 'bg-white text-teal-900 shadow-sm'
                   : 'text-slate-500 hover:text-slate-800'
@@ -206,7 +221,51 @@ export default function Login({ lang, setLang, onLoginSuccess }) {
             </p>
           </div>
 
-          {/* Error Message Box */}
+          {/* Interactive Error State Box for Mobile Not Registered */}
+          {errorState?.type === 'MOBILE_NOT_REGISTERED' && (
+            <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-300 text-amber-900 text-xs font-semibold space-y-2.5 animate-fadeIn">
+              <p className="leading-relaxed">
+                {t.auth.mobileNotRegistered}{' '}
+                <span className="font-extrabold text-amber-950 underline">+91 {errorState.mobile}</span>
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('signup');
+                  setErrorState(null);
+                  setErrorMsg('');
+                }}
+                className="w-full py-2.5 px-3 rounded-xl bg-teal-600 hover:bg-teal-700 active:scale-98 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs"
+              >
+                <UserPlus className="w-4 h-4" />
+                <span>{t.auth.registerNowBtn}</span>
+              </button>
+            </div>
+          )}
+
+          {/* Interactive Error State Box for Mobile Already Registered */}
+          {errorState?.type === 'MOBILE_ALREADY_REGISTERED' && (
+            <div className="p-3.5 rounded-2xl bg-sky-50 border border-sky-300 text-sky-900 text-xs font-semibold space-y-2.5 animate-fadeIn">
+              <p className="leading-relaxed">
+                {t.auth.mobileAlreadyRegistered}{' '}
+                <span className="font-extrabold text-sky-950 underline">+91 {errorState.mobile}</span>
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('login');
+                  setErrorState(null);
+                  setErrorMsg('');
+                }}
+                className="w-full py-2.5 px-3 rounded-xl bg-teal-600 hover:bg-teal-700 active:scale-98 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs"
+              >
+                <LogIn className="w-4 h-4" />
+                <span>{t.auth.loginNowBtn}</span>
+              </button>
+            </div>
+          )}
+
+          {/* Regular Error Message Box */}
           {errorMsg && (
             <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold animate-fadeIn">
               {errorMsg}

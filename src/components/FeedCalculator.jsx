@@ -30,11 +30,10 @@ export default function FeedCalculator({
 
   // Farmer Observation Inputs
   const [selectedSpeciesId, setSelectedSpeciesId] = useState('rohu');
-  const [cultureStage, setCultureStage] = useState('Rearing');
-  const [stocked, setStocked] = useState('10000');
+  const [stocked, setStocked] = useState('');
   const [survivalPercent, setSurvivalPercent] = useState('85');
-  const [averageWeight, setAverageWeight] = useState('50');
-  const [feedPrice, setFeedPrice] = useState('40');
+  const [averageWeight, setAverageWeight] = useState('');
+  const [feedPrice, setFeedPrice] = useState('');
   const [cultureMonth, setCultureMonth] = useState('1');
   const [manualRate, setManualRate] = useState('');
 

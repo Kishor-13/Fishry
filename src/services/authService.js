@@ -4,7 +4,7 @@ const AUTH_USER_KEY = 'aquaculture_auth_user';
 const REGISTERED_USERS_KEY = 'aquaculture_registered_users';
 
 // Pre-seeded demo farmer
-const DEFAULT_DEMO_USER = {
+export const DEFAULT_DEMO_USER = {
   id: 'farmer_demo_1',
   name: 'Ramesh Patil',
   name_mr: 'रमेश पाटील',
@@ -13,6 +13,21 @@ const DEFAULT_DEMO_USER = {
   role: 'farmer',
   createdAt: new Date().toISOString(),
 };
+
+/**
+ * Normalizes an Indian phone number to 10 clean digits.
+ * Handles '+91', '91', leading '0', spaces, and dashes.
+ */
+export function normalizeMobile(mobile) {
+  if (!mobile) return '';
+  let digits = String(mobile).replace(/\D/g, '');
+  if (digits.length === 12 && digits.startsWith('91')) {
+    digits = digits.slice(2);
+  } else if (digits.length === 11 && digits.startsWith('0')) {
+    digits = digits.slice(1);
+  }
+  return digits.slice(-10);
+}
 
 export function getInitialRegisteredUsers() {
   try {
@@ -48,13 +63,42 @@ export function getCurrentUser() {
   }
 }
 
+/**
+ * Checks whether a given mobile number is registered in Supabase or local storage.
+ */
+export async function checkMobileExists(mobile) {
+  const cleanMobile = normalizeMobile(mobile);
+  if (!cleanMobile || cleanMobile.length !== 10) return false;
+
+  const supabase = getSupabaseClient();
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('farmers')
+        .select('id')
+        .eq('mobile', cleanMobile)
+        .limit(1);
+
+      if (!error && data && data.length > 0) {
+        return true;
+      }
+    } catch (err) {
+      console.warn('Supabase checkMobileExists error:', err);
+    }
+  }
+
+  const users = getInitialRegisteredUsers();
+  return users.some((u) => u.mobile === cleanMobile);
+}
+
 export async function loginUser({ mobile, password }) {
-  const cleanMobile = (mobile || '').replace(/\D/g, '').slice(-10);
+  const cleanMobile = normalizeMobile(mobile);
   const supabase = getSupabaseClient();
 
   // 1. If Supabase is connected, verify against Supabase PostgreSQL
   if (supabase) {
     try {
+      // 1a. Try secure RPC login_farmer
       const { data: rpcData, error: rpcError } = await supabase.rpc('login_farmer', {
         p_mobile: cleanMobile,
         p_password: password,
@@ -66,48 +110,99 @@ export async function loginUser({ mobile, password }) {
           id: u.id,
           name: u.name,
           mobile: u.mobile,
-          farmName: u.farm_name || 'Fish Farm',
+          farmName: u.farm_name || `${u.name}'s Farm`,
           isGuest: false,
           source: 'supabase',
         };
         localStorage.setItem(AUTH_USER_KEY, JSON.stringify(sessionUser));
         return { success: true, user: sessionUser };
       }
+
+      // 1b. Fallback: direct table check in case RPC function had a search_path/pgcrypto error
+      const { data: farmerRow, error: tableErr } = await supabase
+        .from('farmers')
+        .select('id, name, mobile, farm_name, password_hash')
+        .eq('mobile', cleanMobile)
+        .maybeSingle();
+
+      if (!tableErr && farmerRow) {
+        // Direct password match (for fallback / unhashed seeds)
+        if (farmerRow.password_hash === password) {
+          const sessionUser = {
+            id: farmerRow.id,
+            name: farmerRow.name,
+            mobile: farmerRow.mobile,
+            farmName: farmerRow.farm_name || `${farmerRow.name}'s Farm`,
+            isGuest: false,
+            source: 'supabase',
+          };
+          localStorage.setItem(AUTH_USER_KEY, JSON.stringify(sessionUser));
+          return { success: true, user: sessionUser };
+        } else {
+          return {
+            success: false,
+            error: 'INCORRECT_PASSWORD',
+            cleanMobile,
+          };
+        }
+      }
     } catch (err) {
-      console.warn('Supabase login check failed, falling back to local:', err);
+      console.warn('Supabase login check failed, checking local:', err);
     }
   }
 
   // 2. Offline / local fallback
   const users = getInitialRegisteredUsers();
-  const user = users.find(
-    (u) => u.mobile === cleanMobile && u.password === password
-  );
+  const user = users.find((u) => u.mobile === cleanMobile);
 
   if (user) {
-    const sessionUser = {
-      id: user.id,
-      name: user.name,
-      mobile: user.mobile,
-      farmName: user.farmName || 'Fish Farm',
-      isGuest: false,
-      source: 'local',
-    };
-    localStorage.setItem(AUTH_USER_KEY, JSON.stringify(sessionUser));
-    return { success: true, user: sessionUser };
+    if (user.password === password) {
+      const sessionUser = {
+        id: user.id,
+        name: user.name,
+        mobile: user.mobile,
+        farmName: user.farmName || 'Fish Farm',
+        isGuest: false,
+        source: 'local',
+      };
+      localStorage.setItem(AUTH_USER_KEY, JSON.stringify(sessionUser));
+      return { success: true, user: sessionUser };
+    } else {
+      return {
+        success: false,
+        error: 'INCORRECT_PASSWORD',
+        cleanMobile,
+      };
+    }
   }
 
-  return { success: false, error: 'INVALID_CREDENTIALS' };
+  // 3. User was not found at all
+  return {
+    success: false,
+    error: 'MOBILE_NOT_REGISTERED',
+    cleanMobile,
+  };
 }
 
 export async function registerUser({ name, mobile, password, farmName }) {
-  const cleanMobile = (mobile || '').replace(/\D/g, '').slice(-10);
+  const cleanMobile = normalizeMobile(mobile);
   const supabase = getSupabaseClient();
   let supabaseId = null;
+
+  // Check if mobile already exists
+  const exists = await checkMobileExists(cleanMobile);
+  if (exists) {
+    return {
+      success: false,
+      error: 'MOBILE_ALREADY_REGISTERED',
+      cleanMobile,
+    };
+  }
 
   // 1. If Supabase is connected, register to Supabase PostgreSQL database
   if (supabase) {
     try {
+      // 1a. Try secure RPC function
       const { data, error } = await supabase.rpc('register_farmer', {
         p_name: name.trim(),
         p_mobile: cleanMobile,
@@ -117,6 +212,23 @@ export async function registerUser({ name, mobile, password, farmName }) {
 
       if (!error && data && data.length > 0) {
         supabaseId = data[0].id;
+      } else if (error) {
+        console.warn('Supabase register_farmer RPC failed, trying direct insert:', error.message);
+        // 1b. Direct table fallback if RPC had pgcrypto error
+        const { data: insData, error: insErr } = await supabase
+          .from('farmers')
+          .insert([{
+            name: name.trim(),
+            mobile: cleanMobile,
+            password_hash: password,
+            farm_name: farmName?.trim() || `${name}'s Farm`,
+          }])
+          .select('id')
+          .maybeSingle();
+
+        if (!insErr && insData) {
+          supabaseId = insData.id;
+        }
       }
     } catch (err) {
       console.warn('Supabase registration error, saving locally:', err);
@@ -125,21 +237,7 @@ export async function registerUser({ name, mobile, password, farmName }) {
 
   // 2. Save locally for offline persistence
   const users = getInitialRegisteredUsers();
-  const existing = users.find((u) => u.mobile === cleanMobile);
-  if (existing) {
-    existing.name = name || existing.name;
-    existing.password = password;
-    localStorage.setItem(REGISTERED_USERS_KEY, JSON.stringify(users));
-    const sessionUser = {
-      id: supabaseId || existing.id,
-      name: existing.name,
-      mobile: existing.mobile,
-      farmName: existing.farmName,
-      isGuest: false,
-    };
-    localStorage.setItem(AUTH_USER_KEY, JSON.stringify(sessionUser));
-    return { success: true, user: sessionUser };
-  }
+  const existingIndex = users.findIndex((u) => u.mobile === cleanMobile);
 
   const newUser = {
     id: supabaseId || 'farmer_' + Date.now(),
@@ -150,8 +248,12 @@ export async function registerUser({ name, mobile, password, farmName }) {
     createdAt: new Date().toISOString(),
   };
 
-  const updatedUsers = [...users, newUser];
-  localStorage.setItem(REGISTERED_USERS_KEY, JSON.stringify(updatedUsers));
+  if (existingIndex >= 0) {
+    users[existingIndex] = newUser;
+  } else {
+    users.push(newUser);
+  }
+  localStorage.setItem(REGISTERED_USERS_KEY, JSON.stringify(users));
 
   const sessionUser = {
     id: newUser.id,
@@ -159,6 +261,7 @@ export async function registerUser({ name, mobile, password, farmName }) {
     mobile: newUser.mobile,
     farmName: newUser.farmName,
     isGuest: false,
+    source: supabaseId ? 'supabase' : 'local',
   };
   localStorage.setItem(AUTH_USER_KEY, JSON.stringify(sessionUser));
   return { success: true, user: sessionUser };
@@ -171,6 +274,7 @@ export function loginAsDemoFarmer() {
     mobile: DEFAULT_DEMO_USER.mobile,
     farmName: DEFAULT_DEMO_USER.farmName,
     isGuest: false,
+    source: 'demo',
   };
   localStorage.setItem(AUTH_USER_KEY, JSON.stringify(sessionUser));
   return sessionUser;
@@ -183,6 +287,7 @@ export function loginAsGuest() {
     mobile: '',
     farmName: 'My Pond',
     isGuest: true,
+    source: 'guest',
   };
   localStorage.setItem(AUTH_USER_KEY, JSON.stringify(guestUser));
   return guestUser;

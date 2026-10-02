@@ -44,49 +44,58 @@ export default function App() {
   const [ponds, setPonds] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Load initial data
+  // Load user data on auth change or online status change
   useEffect(() => {
     async function loadData() {
+      if (!currentUser) {
+        setPonds([]);
+        setFeedHistory([]);
+        setIsLoading(false);
+        return;
+      }
+
       setIsLoading(true);
       try {
         const [rulesRes, historyRes, pondsRes] = await Promise.all([
           fetchFeedingRules(),
-          fetchFeedHistory(),
-          fetchPonds(),
+          fetchFeedHistory(currentUser.id),
+          fetchPonds(currentUser.id),
         ]);
 
         if (rulesRes?.data) setRulesList(rulesRes.data);
         if (historyRes?.data) setFeedHistory(historyRes.data);
         if (pondsRes?.data) setPonds(pondsRes.data);
       } catch (err) {
-        console.error('Error during initial app data load:', err);
+        console.error('Error during app data load:', err);
       } finally {
         setIsLoading(false);
       }
     }
     loadData();
-  }, [isSupabaseOnline]);
+  }, [currentUser?.id, isSupabaseOnline]);
 
   const handleLogout = () => {
     logoutUser();
     setCurrentUser(null);
+    setPonds([]);
+    setFeedHistory([]);
   };
 
   // Feed Record Handlers
   const handleSaveRecord = async (record) => {
-    const saved = await saveFeedRecord(record);
+    const saved = await saveFeedRecord(record, currentUser?.id);
     setFeedHistory((prev) => [saved, ...prev.filter((r) => r.id !== saved.id)]);
     return saved;
   };
 
   const handleDeleteRecord = async (recordId) => {
-    await deleteFeedRecord(recordId);
+    await deleteFeedRecord(recordId, currentUser?.id);
     setFeedHistory((prev) => prev.filter((r) => r.id !== recordId));
   };
 
   // Pond Handlers
   const handleSavePond = async (pond) => {
-    const saved = await savePondRecord(pond);
+    const saved = await savePondRecord(pond, currentUser?.id);
     setPonds((prev) => {
       const exists = prev.find((p) => p.id === saved.id);
       return exists
@@ -97,7 +106,7 @@ export default function App() {
   };
 
   const handleDeletePond = async (pondId) => {
-    await deletePondRecord(pondId);
+    await deletePondRecord(pondId, currentUser?.id);
     setPonds((prev) => prev.filter((p) => p.id !== pondId));
   };
 

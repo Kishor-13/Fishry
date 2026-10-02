@@ -32,9 +32,8 @@ export default function Dashboard({
   const todayFeedKg = todayRecords.reduce((acc, curr) => acc + (Number(curr.daily_feed) || 0), 0);
   const todayFeedCost = todayRecords.reduce((acc, curr) => acc + (Number(curr.feed_cost) || 0), 0);
 
-  // Fallback to latest record if today has no calculations yet for demonstrative preview
-  const displayFeedKg = todayFeedKg > 0 ? todayFeedKg : (feedHistory[0]?.daily_feed || 0);
-  const displayFeedCost = todayFeedCost > 0 ? todayFeedCost : (feedHistory[0]?.feed_cost || 0);
+  const displayFeedKg = todayFeedKg;
+  const displayFeedCost = todayFeedCost;
 
   const recentRecords = feedHistory.slice(0, 3);
 

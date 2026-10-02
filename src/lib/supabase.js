@@ -129,14 +129,15 @@ export async function fetchFeedingRules() {
 }
 
 /* ==========================================================================
-   FEED HISTORY API (Supabase + localStorage dual persistence)
+   FEED HISTORY API (Supabase + localStorage dual persistence, scoped by farmer)
    ========================================================================== */
 
 const LOCAL_HISTORY_KEY = 'aquaculture_feed_history';
 
-export function getLocalFeedHistory() {
+export function getLocalFeedHistory(farmerId = null) {
   try {
-    const raw = safeStorage.getItem(LOCAL_HISTORY_KEY);
+    const key = farmerId ? `${LOCAL_HISTORY_KEY}_${farmerId}` : LOCAL_HISTORY_KEY;
+    const raw = safeStorage.getItem(key);
     return raw ? JSON.parse(raw) : [];
   } catch (err) {
     console.error('Error reading local feed history:', err);
@@ -144,27 +145,32 @@ export function getLocalFeedHistory() {
   }
 }
 
-export function saveLocalFeedHistory(records) {
+export function saveLocalFeedHistory(records, farmerId = null) {
   try {
-    safeStorage.setItem(LOCAL_HISTORY_KEY, JSON.stringify(records));
+    const key = farmerId ? `${LOCAL_HISTORY_KEY}_${farmerId}` : LOCAL_HISTORY_KEY;
+    safeStorage.setItem(key, JSON.stringify(records));
   } catch (err) {
     console.error('Error saving local feed history:', err);
   }
 }
 
-export async function fetchFeedHistory() {
-  // Always fetch local first for immediate UI display
-  const localRecords = getLocalFeedHistory();
+export async function fetchFeedHistory(farmerId = null) {
+  const localRecords = getLocalFeedHistory(farmerId);
 
   if (supabaseClient) {
     try {
-      const { data, error } = await supabaseClient
+      let query = supabaseClient
         .from('feed_history')
         .select('*')
         .order('created_at', { ascending: false });
 
+      if (farmerId) {
+        query = query.eq('farmer_id', farmerId);
+      }
+
+      const { data, error } = await query;
+
       if (!error && data) {
-        // Merge with local records (deduplicate by id)
         const recordMap = new Map();
         [...data, ...localRecords].forEach((r) => {
           if (r.id) recordMap.set(r.id, r);
@@ -172,7 +178,7 @@ export async function fetchFeedHistory() {
         const merged = Array.from(recordMap.values()).sort(
           (a, b) => new Date(b.created_at) - new Date(a.created_at)
         );
-        saveLocalFeedHistory(merged);
+        saveLocalFeedHistory(merged, farmerId);
         return { data: merged, source: 'supabase' };
       }
     } catch (err) {
@@ -183,9 +189,11 @@ export async function fetchFeedHistory() {
   return { data: localRecords, source: 'local' };
 }
 
-export async function saveFeedRecord(record) {
+export async function saveFeedRecord(record, farmerId = null) {
+  const actualFarmerId = farmerId || record.farmer_id || null;
   const newRecord = {
     id: record.id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'rec_' + Date.now()),
+    farmer_id: actualFarmerId,
     created_at: record.created_at || new Date().toISOString(),
     species: record.species,
     scientific_name: record.scientific_name || '',
@@ -213,41 +221,46 @@ export async function saveFeedRecord(record) {
   };
 
   // Save to local storage first
-  const currentLocal = getLocalFeedHistory();
+  const currentLocal = getLocalFeedHistory(actualFarmerId);
   const updatedLocal = [newRecord, ...currentLocal.filter(r => r.id !== newRecord.id)];
-  saveLocalFeedHistory(updatedLocal);
+  saveLocalFeedHistory(updatedLocal, actualFarmerId);
 
   // If Supabase is connected, persist to PostgreSQL
   if (supabaseClient) {
     try {
+      const payload = {
+        id: newRecord.id,
+        created_at: newRecord.created_at,
+        species: newRecord.species,
+        scientific_name: newRecord.scientific_name,
+        culture_stage: newRecord.culture_stage,
+        culture_month: newRecord.culture_month,
+        stocked: newRecord.stocked,
+        survival_percent: newRecord.survival_percent,
+        average_weight: newRecord.average_weight,
+        surviving_fish: newRecord.surviving_fish,
+        feeding_rate: newRecord.feeding_rate,
+        feeding_method: newRecord.feeding_method,
+        rate_source: newRecord.rate_source,
+        rule_explanation: newRecord.rule_explanation,
+        biomass: newRecord.biomass,
+        daily_feed: newRecord.daily_feed,
+        morning_feed: newRecord.morning_feed,
+        evening_feed: newRecord.evening_feed,
+        feed_price: newRecord.feed_price,
+        feed_cost: newRecord.feed_cost,
+        rule_id: newRecord.rule_id,
+        pond_id: newRecord.pond_id,
+        pond_name: newRecord.pond_name,
+        notes: newRecord.notes,
+      };
+      if (newRecord.farmer_id) {
+        payload.farmer_id = newRecord.farmer_id;
+      }
+
       const { error } = await supabaseClient
         .from('feed_history')
-        .insert([{
-          id: newRecord.id,
-          created_at: newRecord.created_at,
-          species: newRecord.species,
-          scientific_name: newRecord.scientific_name,
-          culture_stage: newRecord.culture_stage,
-          culture_month: newRecord.culture_month,
-          stocked: newRecord.stocked,
-          survival_percent: newRecord.survival_percent,
-          average_weight: newRecord.average_weight,
-          surviving_fish: newRecord.surviving_fish,
-          feeding_rate: newRecord.feeding_rate,
-          feeding_method: newRecord.feeding_method,
-          rate_source: newRecord.rate_source,
-          rule_explanation: newRecord.rule_explanation,
-          biomass: newRecord.biomass,
-          daily_feed: newRecord.daily_feed,
-          morning_feed: newRecord.morning_feed,
-          evening_feed: newRecord.evening_feed,
-          feed_price: newRecord.feed_price,
-          feed_cost: newRecord.feed_cost,
-          rule_id: newRecord.rule_id,
-          pond_id: newRecord.pond_id,
-          pond_name: newRecord.pond_name,
-          notes: newRecord.notes,
-        }]);
+        .insert([payload]);
 
       if (error) {
         console.warn('Supabase insert warning:', error);
@@ -260,11 +273,11 @@ export async function saveFeedRecord(record) {
   return newRecord;
 }
 
-export async function deleteFeedRecord(recordId) {
+export async function deleteFeedRecord(recordId, farmerId = null) {
   // Delete from local
-  const currentLocal = getLocalFeedHistory();
+  const currentLocal = getLocalFeedHistory(farmerId);
   const updated = currentLocal.filter((r) => r.id !== recordId);
-  saveLocalFeedHistory(updated);
+  saveLocalFeedHistory(updated, farmerId);
 
   // Delete from Supabase
   if (supabaseClient) {
@@ -282,75 +295,63 @@ export async function deleteFeedRecord(recordId) {
 }
 
 /* ==========================================================================
-   POND MANAGEMENT API (Supabase + localStorage dual persistence)
+   POND MANAGEMENT API (Supabase + localStorage dual persistence, scoped by farmer)
    ========================================================================== */
 
 const LOCAL_PONDS_KEY = 'aquaculture_ponds';
 
-export function getLocalPonds() {
+export function getLocalPonds(farmerId = null) {
   try {
-    const raw = safeStorage.getItem(LOCAL_PONDS_KEY);
+    const key = farmerId ? `${LOCAL_PONDS_KEY}_${farmerId}` : LOCAL_PONDS_KEY;
+    const raw = safeStorage.getItem(key);
     if (!raw) {
-      // Seed 2 initial sample ponds for farmer convenience
-      const initial = [
-        {
-          id: 'pond_1',
-          name: 'Pond A1 - Talav 1',
-          area_acres: 1.5,
-          depth_feet: 5.5,
-          species: 'Rohu',
-          culture_stage: 'Rearing',
-          stocking_count: 15000,
-          survival_percent: 85,
-          average_weight_g: 50,
-          estimated_biomass_kg: 637.5,
-          created_at: new Date().toISOString(),
-        },
-        {
-          id: 'pond_2',
-          name: 'Pond B2 - Talav 2',
-          area_acres: 2.0,
-          depth_feet: 6.0,
-          species: 'Common Carp',
-          culture_stage: 'Grow-out',
-          stocking_count: 8000,
-          survival_percent: 90,
-          average_weight_g: 250,
-          estimated_biomass_kg: 1800,
-          created_at: new Date().toISOString(),
-        }
-      ];
-      saveLocalPonds(initial);
-      return initial;
+      return []; // Clean empty list for every new farmer!
     }
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    // Filter out any legacy sample ponds
+    const cleaned = Array.isArray(parsed) 
+      ? parsed.filter(p => p.id !== 'pond_1' && p.id !== 'pond_2')
+      : [];
+    if (cleaned.length !== (parsed ? parsed.length : 0)) {
+      saveLocalPonds(cleaned, farmerId);
+    }
+    return cleaned;
   } catch (err) {
     console.error('Error reading local ponds:', err);
     return [];
   }
 }
 
-export function saveLocalPonds(ponds) {
+export function saveLocalPonds(ponds, farmerId = null) {
   try {
-    safeStorage.setItem(LOCAL_PONDS_KEY, JSON.stringify(ponds));
+    const key = farmerId ? `${LOCAL_PONDS_KEY}_${farmerId}` : LOCAL_PONDS_KEY;
+    safeStorage.setItem(key, JSON.stringify(ponds));
   } catch (err) {
     console.error('Error saving local ponds:', err);
   }
 }
 
-export async function fetchPonds() {
-  const localPonds = getLocalPonds();
+export async function fetchPonds(farmerId = null) {
+  const localPonds = getLocalPonds(farmerId);
 
   if (supabaseClient) {
     try {
-      const { data, error } = await supabaseClient
+      let query = supabaseClient
         .from('ponds')
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (!error && data && data.length > 0) {
-        saveLocalPonds(data);
-        return { data, source: 'supabase' };
+      if (farmerId) {
+        query = query.eq('farmer_id', farmerId);
+      }
+
+      const { data, error } = await query;
+
+      if (!error && data) {
+        // Filter out legacy sample ponds if any
+        const cleaned = data.filter(p => p.id !== 'pond_1' && p.id !== 'pond_2');
+        saveLocalPonds(cleaned, farmerId);
+        return { data: cleaned, source: 'supabase' };
       }
     } catch (err) {
       console.warn('Supabase fetch ponds error:', err);
@@ -360,10 +361,12 @@ export async function fetchPonds() {
   return { data: localPonds, source: 'local' };
 }
 
-export async function savePondRecord(pond) {
+export async function savePondRecord(pond, farmerId = null) {
+  const actualFarmerId = farmerId || pond.farmer_id || null;
   const isNew = !pond.id;
   const newPond = {
     id: pond.id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'p_' + Date.now()),
+    farmer_id: actualFarmerId,
     name: pond.name || 'Pond',
     area_acres: Number(pond.area_acres) || 0,
     depth_feet: Number(pond.depth_feet) || 0,
@@ -378,11 +381,11 @@ export async function savePondRecord(pond) {
     updated_at: new Date().toISOString(),
   };
 
-  const currentLocal = getLocalPonds();
+  const currentLocal = getLocalPonds(actualFarmerId);
   const updated = isNew
     ? [newPond, ...currentLocal]
     : currentLocal.map((p) => (p.id === newPond.id ? newPond : p));
-  saveLocalPonds(updated);
+  saveLocalPonds(updated, actualFarmerId);
 
   if (supabaseClient) {
     try {
@@ -397,10 +400,10 @@ export async function savePondRecord(pond) {
   return newPond;
 }
 
-export async function deletePondRecord(pondId) {
-  const currentLocal = getLocalPonds();
+export async function deletePondRecord(pondId, farmerId = null) {
+  const currentLocal = getLocalPonds(farmerId);
   const updated = currentLocal.filter((p) => p.id !== pondId);
-  saveLocalPonds(updated);
+  saveLocalPonds(updated, farmerId);
 
   if (supabaseClient) {
     try {

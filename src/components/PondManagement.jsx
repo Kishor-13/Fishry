@@ -42,13 +42,13 @@ export default function PondManagement({
   const openAddModal = () => {
     setEditingPond(null);
     setName(`Pond ${ponds.length + 1}`);
-    setAreaAcres('1.0');
-    setDepthFeet('5.0');
+    setAreaAcres('');
+    setDepthFeet('');
     setSpecies('Rohu');
     setCultureStage('Rearing');
-    setStockingCount('10000');
+    setStockingCount('');
     setSurvivalPercent('85');
-    setAverageWeightG('50');
+    setAverageWeightG('');
     setNotes('');
     setIsModalOpen(true);
   };

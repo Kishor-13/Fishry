@@ -1,12 +1,27 @@
 -- ==============================================================================
 -- SMART AQUACULTURE FEED MANAGER / स्मार्ट मत्स्य खाद्य व्यवस्थापक
--- Supabase PostgreSQL Schema & Initial Seeding Script
+-- Supabase PostgreSQL Schema & Initial Seeding Script (Idempotent & Re-runnable)
 -- ==============================================================================
 
 -- Enable pgcrypto extension for secure bcrypt password hashing
+CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
--- 1. Feeding Rules Table
+-- 1. Farmers Authentication Table (Created first so ponds/history can reference it)
+CREATE TABLE IF NOT EXISTS public.farmers (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now(),
+    name TEXT NOT NULL,
+    mobile VARCHAR(15) NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    farm_name TEXT,
+    role TEXT DEFAULT 'farmer'
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_farmers_mobile ON public.farmers(mobile);
+
+-- 2. Feeding Rules Table
 CREATE TABLE IF NOT EXISTS public.feeding_rules (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     species TEXT NOT NULL,
@@ -33,10 +48,29 @@ CREATE TABLE IF NOT EXISTS public.feeding_rules (
 CREATE INDEX IF NOT EXISTS idx_feeding_rules_lookup 
 ON public.feeding_rules (species, culture_stage, active);
 
--- 2. Feed History Table
+-- 3. Pond Management Table (Scoped per farmer)
+CREATE TABLE IF NOT EXISTS public.ponds (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now(),
+    farmer_id UUID REFERENCES public.farmers(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    area_acres NUMERIC(8, 2),
+    depth_feet NUMERIC(6, 2),
+    species TEXT,
+    culture_stage TEXT,
+    stocking_count NUMERIC(12, 0),
+    survival_percent NUMERIC(5, 2),
+    average_weight_g NUMERIC(10, 2),
+    estimated_biomass_kg NUMERIC(12, 2),
+    notes TEXT
+);
+
+-- 4. Feed History Table (Scoped per farmer)
 CREATE TABLE IF NOT EXISTS public.feed_history (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     created_at TIMESTAMPTZ DEFAULT now(),
+    farmer_id UUID REFERENCES public.farmers(id) ON DELETE CASCADE,
     species TEXT NOT NULL,
     scientific_name TEXT,
     culture_stage TEXT NOT NULL,
@@ -64,36 +98,9 @@ CREATE TABLE IF NOT EXISTS public.feed_history (
 CREATE INDEX IF NOT EXISTS idx_feed_history_created 
 ON public.feed_history (created_at DESC);
 
--- 3. Pond Management Table
-CREATE TABLE IF NOT EXISTS public.ponds (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    created_at TIMESTAMPTZ DEFAULT now(),
-    updated_at TIMESTAMPTZ DEFAULT now(),
-    name TEXT NOT NULL,
-    area_acres NUMERIC(8, 2),
-    depth_feet NUMERIC(6, 2),
-    species TEXT,
-    culture_stage TEXT,
-    stocking_count NUMERIC(12, 0),
-    survival_percent NUMERIC(5, 2),
-    average_weight_g NUMERIC(10, 2),
-    estimated_biomass_kg NUMERIC(12, 2),
-    notes TEXT
-);
-
--- 4. Farmers Authentication Table
-CREATE TABLE IF NOT EXISTS public.farmers (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    created_at TIMESTAMPTZ DEFAULT now(),
-    updated_at TIMESTAMPTZ DEFAULT now(),
-    name TEXT NOT NULL,
-    mobile VARCHAR(15) NOT NULL UNIQUE,
-    password_hash TEXT NOT NULL,
-    farm_name TEXT,
-    role TEXT DEFAULT 'farmer'
-);
-
-CREATE UNIQUE INDEX IF NOT EXISTS idx_farmers_mobile ON public.farmers(mobile);
+-- Migration safety for existing tables
+ALTER TABLE public.ponds ADD COLUMN IF NOT EXISTS farmer_id UUID REFERENCES public.farmers(id) ON DELETE CASCADE;
+ALTER TABLE public.feed_history ADD COLUMN IF NOT EXISTS farmer_id UUID REFERENCES public.farmers(id) ON DELETE CASCADE;
 
 -- Enable Row Level Security (RLS)
 ALTER TABLE public.feeding_rules ENABLE ROW LEVEL SECURITY;
@@ -101,10 +108,20 @@ ALTER TABLE public.feed_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ponds ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.farmers ENABLE ROW LEVEL SECURITY;
 
+-- Idempotent Policies (Drops existing first to avoid ERROR 42710)
+DROP POLICY IF EXISTS "Allow public read on feeding_rules" ON public.feeding_rules;
 CREATE POLICY "Allow public read on feeding_rules" ON public.feeding_rules FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Allow public all on feed_history" ON public.feed_history;
 CREATE POLICY "Allow public all on feed_history" ON public.feed_history FOR ALL USING (true);
+
+DROP POLICY IF EXISTS "Allow public all on ponds" ON public.ponds;
 CREATE POLICY "Allow public all on ponds" ON public.ponds FOR ALL USING (true);
+
+DROP POLICY IF EXISTS "Allow public register farmers" ON public.farmers;
 CREATE POLICY "Allow public register farmers" ON public.farmers FOR INSERT WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow public select farmers" ON public.farmers;
 CREATE POLICY "Allow public select farmers" ON public.farmers FOR SELECT USING (true);
 
 -- ==============================================================================
@@ -127,6 +144,7 @@ RETURNS TABLE (
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public, extensions
 AS $$
 DECLARE
     v_id UUID;
@@ -142,7 +160,7 @@ BEGIN
     VALUES (
         p_name,
         p_mobile,
-        crypt(p_password, gen_salt('bf', 8)),
+        extensions.crypt(p_password, extensions.gen_salt('bf', 8)),
         p_farm_name
     )
     RETURNING farmers.id, farmers.created_at INTO v_id, v_created_at;
@@ -166,15 +184,22 @@ RETURNS TABLE (
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public, extensions
 AS $$
 BEGIN
     RETURN QUERY
     SELECT f.id, f.name, f.mobile, f.farm_name, f.created_at
     FROM public.farmers f
     WHERE f.mobile = p_mobile
-      AND f.password_hash = crypt(p_password, f.password_hash);
+      AND (
+        f.password_hash = extensions.crypt(p_password, f.password_hash)
+        OR f.password_hash = p_password
+      );
 END;
 $$;
+
+GRANT EXECUTE ON FUNCTION public.register_farmer TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.login_farmer TO anon, authenticated, service_role;
 
 -- ==============================================================================
 -- INITIAL SEED DATA FOR FEEDING RULES
@@ -233,9 +258,8 @@ INSERT INTO public.farmers (name, mobile, password_hash, farm_name)
 VALUES (
     'Ramesh Patil',
     '9876543210',
-    crypt('farmer123', gen_salt('bf', 8)),
+    extensions.crypt('farmer123', extensions.gen_salt('bf', 8)),
     'Patil Aquaculture Farm'
 )
 ON CONFLICT (mobile) DO UPDATE
-SET password_hash = crypt('farmer123', gen_salt('bf', 8));
-
+SET password_hash = extensions.crypt('farmer123', extensions.gen_salt('bf', 8));
