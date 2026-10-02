@@ -137,3 +137,4 @@ VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 ## 📋 Scientific Note & Disclaimer
 > *Feeding rates provided by this application are reference starting values based on ICAR-CIFA and FAO aquaculture guidelines. Actual daily feeding should always be adjusted according to fish appetite, dissolved oxygen levels, water temperature, feed pellet quality, and observed health.*
+"# Fishry" 
