@@ -153,6 +153,8 @@ export default function App() {
             ponds={ponds}
             onNavigateToCalculator={() => setActiveTab('calculator')}
             onNavigateToHistory={() => setActiveTab('history')}
+            onNavigateToPonds={() => setActiveTab('ponds')}
+            onNavigateToFCR={() => setActiveTab('fcr')}
           />
         )}
 

@@ -19,6 +19,8 @@ export default function Dashboard({
   ponds = [],
   onNavigateToCalculator,
   onNavigateToHistory,
+  onNavigateToPonds,
+  onNavigateToFCR,
 }) {
   const t = translations[lang];
 
@@ -69,16 +71,20 @@ export default function Dashboard({
         </div>
       </div>
 
-      {/* 4 Farmer Overview Metric Cards */}
+      {/* 4 Farmer Overview Metric Cards (All Clickable) */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
         
-        {/* Today's Feed */}
-        <div className="bg-white rounded-xl sm:rounded-2xl p-3 sm:p-5 border border-teal-100/80 shadow-xs hover:shadow-card transition-all">
+        {/* 1. Today's Feed -> Click to Calculate */}
+        <div 
+          onClick={onNavigateToCalculator}
+          className="bg-white rounded-xl sm:rounded-2xl p-3 sm:p-5 border border-teal-100/80 shadow-xs hover:shadow-card hover:border-teal-400 transition-all cursor-pointer group active:scale-98"
+          title={lang === 'mr' ? 'खाद्य कॅल्क्युलेटर उघडा' : 'Open Feed Calculator'}
+        >
           <div className="flex items-center justify-between mb-1 sm:mb-2">
-            <span className="text-[11px] sm:text-xs font-semibold text-slate-500 uppercase tracking-wider">
+            <span className="text-[11px] sm:text-xs font-semibold text-slate-500 uppercase tracking-wider group-hover:text-teal-700 transition-colors">
               {t.dashboard.todayFeed}
             </span>
-            <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-teal-50 text-teal-700 flex items-center justify-center shrink-0">
+            <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-teal-50 text-teal-700 flex items-center justify-center shrink-0 group-hover:bg-teal-600 group-hover:text-white transition-colors">
               <Scale className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
           </div>
@@ -86,62 +92,78 @@ export default function Dashboard({
             {formatDisplayNumber(displayFeedKg, 2)}{' '}
             <span className="text-xs sm:text-sm font-semibold text-slate-500">kg</span>
           </div>
-          <p className="text-[10px] sm:text-[11px] text-teal-600 font-medium mt-0.5 truncate">
-            {todayRecords.length > 0 ? (lang === 'mr' ? 'आजची नोंद' : 'Today logged') : (lang === 'mr' ? 'शेवटची नोंद' : 'Last logged')}
+          <p className="text-[10px] sm:text-[11px] text-teal-600 font-medium mt-1 truncate flex items-center justify-between">
+            <span>{todayRecords.length > 0 ? (lang === 'mr' ? 'आजची नोंद' : 'Today logged') : (lang === 'mr' ? 'कॅल्क्युलेटर उघडा' : 'Calculate feed')}</span>
+            <span className="text-teal-400 font-bold group-hover:translate-x-0.5 transition-transform">→</span>
           </p>
         </div>
 
-        {/* Today's Feed Cost */}
-        <div className="bg-white rounded-xl sm:rounded-2xl p-3 sm:p-5 border border-emerald-100/80 shadow-xs hover:shadow-card transition-all">
+        {/* 2. Today's Feed Cost -> Click to Calculate */}
+        <div 
+          onClick={onNavigateToCalculator}
+          className="bg-white rounded-xl sm:rounded-2xl p-3 sm:p-5 border border-emerald-100/80 shadow-xs hover:shadow-card hover:border-emerald-400 transition-all cursor-pointer group active:scale-98"
+          title={lang === 'mr' ? 'खाद्य कॅल्क्युलेटर उघडा' : 'Open Feed Calculator'}
+        >
           <div className="flex items-center justify-between mb-1 sm:mb-2">
-            <span className="text-[11px] sm:text-xs font-semibold text-slate-500 uppercase tracking-wider">
+            <span className="text-[11px] sm:text-xs font-semibold text-slate-500 uppercase tracking-wider group-hover:text-emerald-700 transition-colors">
               {t.dashboard.todayCost}
             </span>
-            <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0">
+            <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0 group-hover:bg-emerald-600 group-hover:text-white transition-colors">
               <IndianRupee className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
           </div>
           <div className="text-lg sm:text-3xl font-extrabold text-emerald-900 tracking-tight truncate">
             ₹{formatDisplayNumber(displayFeedCost, 0)}
           </div>
-          <p className="text-[10px] sm:text-[11px] text-emerald-600 font-medium mt-0.5 truncate">
-            {lang === 'mr' ? 'अंदाजित दैनिक खर्च' : 'Estimated daily cost'}
+          <p className="text-[10px] sm:text-[11px] text-emerald-600 font-medium mt-1 truncate flex items-center justify-between">
+            <span>{lang === 'mr' ? 'अंदाजित खर्च' : 'Estimated cost'}</span>
+            <span className="text-emerald-400 font-bold group-hover:translate-x-0.5 transition-transform">→</span>
           </p>
         </div>
 
-        {/* Saved Ponds */}
-        <div className="bg-white rounded-2xl p-4 sm:p-5 border border-sky-100/80 shadow-card hover:shadow-card-hover transition-all">
+        {/* 3. Saved Ponds -> Click to Open Pond Management */}
+        <div 
+          onClick={onNavigateToPonds}
+          className="bg-white rounded-2xl p-4 sm:p-5 border border-sky-100/80 shadow-card hover:shadow-card-hover hover:border-sky-400 transition-all cursor-pointer group active:scale-98"
+          title={lang === 'mr' ? 'तळे व्यवस्थापन उघडा' : 'Open Pond Management'}
+        >
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider group-hover:text-sky-700 transition-colors">
               {t.dashboard.savedPonds}
             </span>
-            <div className="w-9 h-9 rounded-xl bg-sky-50 text-sky-700 flex items-center justify-center">
+            <div className="w-9 h-9 rounded-xl bg-sky-50 text-sky-700 flex items-center justify-center group-hover:bg-sky-600 group-hover:text-white transition-colors">
               <Waves className="w-5 h-5" />
             </div>
           </div>
           <div className="text-2xl sm:text-3xl font-extrabold text-sky-900 tracking-tight">
             {ponds.length}
           </div>
-          <p className="text-[11px] text-sky-600 font-medium mt-1">
-            {lang === 'mr' ? 'सक्रिय तळी' : 'Active ponds'}
+          <p className="text-[11px] text-sky-600 font-medium mt-1 flex items-center justify-between">
+            <span>{lang === 'mr' ? 'तळी पहा / जोडा' : 'Manage ponds'}</span>
+            <span className="text-sky-400 font-bold group-hover:translate-x-0.5 transition-transform">→</span>
           </p>
         </div>
 
-        {/* Feed Records */}
-        <div className="bg-white rounded-2xl p-4 sm:p-5 border border-amber-100/80 shadow-card hover:shadow-card-hover transition-all">
+        {/* 4. Feed Records -> Click to Open Feed History */}
+        <div 
+          onClick={onNavigateToHistory}
+          className="bg-white rounded-2xl p-4 sm:p-5 border border-amber-100/80 shadow-card hover:shadow-card-hover hover:border-amber-400 transition-all cursor-pointer group active:scale-98"
+          title={lang === 'mr' ? 'खाद्य इतिहास पहा' : 'View Feed History'}
+        >
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider group-hover:text-amber-700 transition-colors">
               {t.dashboard.feedRecords}
             </span>
-            <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center">
+            <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center group-hover:bg-amber-600 group-hover:text-white transition-colors">
               <ClipboardList className="w-5 h-5" />
             </div>
           </div>
           <div className="text-2xl sm:text-3xl font-extrabold text-amber-900 tracking-tight">
             {feedHistory.length}
           </div>
-          <p className="text-[11px] text-amber-600 font-medium mt-1">
-            {lang === 'mr' ? 'एकूण जतन नोंदी' : 'Total logs stored'}
+          <p className="text-[11px] text-amber-600 font-medium mt-1 flex items-center justify-between">
+            <span>{lang === 'mr' ? 'नोंदी पहा' : 'View history'}</span>
+            <span className="text-amber-400 font-bold group-hover:translate-x-0.5 transition-transform">→</span>
           </p>
         </div>
 
@@ -235,8 +257,15 @@ export default function Dashboard({
           <div className="p-3 bg-white/80 rounded-xl border border-amber-200/50">
             <span className="font-bold text-amber-800">2. {lang === 'mr' ? 'ऑक्सिजन सुरक्षितता' : 'Oxygen Safety'}:</span> {t.dashboard.tip2}
           </div>
-          <div className="p-3 bg-white/80 rounded-xl border border-amber-200/50">
+          <div 
+            onClick={onNavigateToFCR}
+            className="p-3 bg-white/80 hover:bg-white hover:border-amber-400 hover:shadow-xs rounded-xl border border-amber-200/50 cursor-pointer transition-all group"
+            title={lang === 'mr' ? 'FCR मॉड्युल उघडा' : 'Open FCR Module'}
+          >
             <span className="font-bold text-amber-800">3. {lang === 'mr' ? 'FCR चे तत्त्व' : 'FCR Principle'}:</span> {t.dashboard.tip3}
+            <span className="inline-block text-[11px] text-amber-600 font-bold ml-1 group-hover:underline">
+              {lang === 'mr' ? 'FCR गणना →' : 'Calculate FCR →'}
+            </span>
           </div>
         </div>
       </div>
