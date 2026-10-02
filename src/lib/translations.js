@@ -1,0 +1,545 @@
+export const translations = {
+  en: {
+    appTitle: 'Smart Aquaculture Feed Manager',
+    appMarathiTitle: 'स्मार्ट मत्स्य खाद्य व्यवस्थापक',
+    tagline: 'The farmer enters observations; the system does the calculations.',
+    maharashtraNote: 'Empowering Fish Farmers in Maharashtra & India',
+
+    // Navigation
+    nav: {
+      dashboard: 'Dashboard',
+      calculator: 'Feed Calculator',
+      history: 'Feed History',
+      ponds: 'Pond Management',
+      fcr: 'FCR Calculator',
+      help: 'Help & Guide',
+    },
+
+    // Header
+    header: {
+      language: 'Language',
+      supabaseOnline: 'Cloud Sync Active',
+      supabaseOffline: 'Offline Local Mode',
+      connectDb: 'Supabase Settings',
+    },
+
+    // Dashboard
+    dashboard: {
+      title: 'Farmer Dashboard',
+      subtitle: 'Overview of today\'s aquaculture feeding requirements',
+      todayFeed: "Today's Feed",
+      todayCost: "Today's Feed Cost",
+      savedPonds: 'Saved Ponds',
+      feedRecords: 'Feed Records',
+      calculateTodayFeed: "Calculate Today's Feed",
+      quickSummaryTitle: 'Recent Feed Calculations',
+      noRecentCalculations: 'No feeding records saved yet. Start by calculating today\'s feed.',
+      viewAllHistory: 'View All History',
+      keyTipsTitle: 'Feeding Best Practices',
+      tip1: 'Split feed into 50% morning (7–8 AM) and 50% evening (4–5 PM) for optimal digestion.',
+      tip2: 'Never feed during periods of dissolved oxygen stress or extreme water temperatures.',
+      tip3: 'FCR is calculated using actual feed fed, not calculated targets.',
+    },
+
+    // Feed Calculator
+    calculator: {
+      title: 'Aquaculture Feed Calculator',
+      subtitle: 'Enter your pond observations; feeding amounts calculate in real time.',
+      
+      // Inputs
+      speciesLabel: 'Fish Species',
+      speciesPlaceholder: 'Select fish species',
+      cultureStageLabel: 'Culture Stage',
+      cultureStagePlaceholder: 'Select culture stage',
+      stockedLabel: 'Number of Fish Stocked',
+      stockedPlaceholder: 'e.g. 10000',
+      stockedHelp: 'Total fish stocked in the pond',
+      survivalLabel: 'Survival Percentage (%)',
+      survivalPlaceholder: 'e.g. 85',
+      survivalHelp: 'Estimated survival rate (1% to 100%)',
+      weightLabel: 'Average Fish Weight (g)',
+      weightPlaceholder: 'e.g. 50',
+      weightHelp: 'Average individual fish sample weight in grams',
+      feedPriceLabel: 'Feed Price per kg (₹/kg)',
+      feedPricePlaceholder: 'e.g. 40',
+      feedPriceHelp: 'Current commercial pelleted feed purchase price',
+      cultureMonthLabel: 'Culture Period / Month',
+      cultureMonthPlaceholder: 'Select or enter month (1–12)',
+      cultureMonthHelp: 'Months elapsed since stocking (required for Pangasius feeding rule)',
+
+      // Custom Species manual rate
+      manualRateLabel: 'Manual Feeding Rate (%)',
+      manualRatePlaceholder: 'e.g. 3.0',
+      manualRateEnteredByFarmer: 'Manual feeding rate entered by farmer',
+      sourceFarmerEntered: 'Entered by farmer',
+      sourceAutomaticRule: 'Automatic rule',
+
+      // Validation & messages
+      incompleteForm: 'Enter the required observations to see the calculation.',
+      errStocked: 'Number stocked must be greater than 0.',
+      errSurvival: 'Survival percentage must be between 1% and 100%.',
+      errWeight: 'Average fish weight must be greater than 0 g.',
+      errPrice: 'Feed price must be 0 or greater.',
+      errManualRate: 'Manual feeding rate must be greater than 0%.',
+      errPangasiusMonth: 'Please enter culture month for Pangasius rule selection.',
+
+      // Special Protocols
+      nurserySpawnNote: 'Nursery feeding requires initial spawn-weight information.',
+      nurserySpawnSubnote: 'Standard CIFA Protocol: 4× initial spawn weight for first 5–7 days, and 8× initial spawn weight for subsequent period.',
+      magurProtocolNote: 'Use a verified Magur feeding protocol for this culture condition.',
+      magurProtocolSubnote: 'Magur (Clarias batrachus) feeding depends on live feed availability and formulated moist paste/pellet ratios.',
+      grassCarpForageNote: 'Grass Carp feeding should follow a verified forage/supplementary-feed schedule.',
+      grassCarpForageSubnote: 'Grass Carp primarily consumes aquatic weeds, duckweed, and green fodder (Hydrilla/Napier) alongside supplementary pellets.',
+      noRuleFound: 'Feeding rate unavailable: No verified predefined feeding rule is available for this species/stage/weight combination.',
+
+      // Results
+      resultsTitle: 'Automatically Calculated',
+      resultsSubtitle: 'Real-time daily feed recommendations based on ICAR-CIFA standards',
+      survivingFish: 'Surviving Fish',
+      averageBiomass: 'Average Biomass',
+      feedingRate: 'Feeding Rate',
+      dailyFeed: 'Daily Feed Requirement',
+      morningFeed: 'Morning Feed (50%)',
+      eveningFeed: 'Evening Feed (50%)',
+      dailyFeedCost: 'Daily Feed Cost',
+      perDay: '/day',
+      fishCount: 'fish',
+
+      // Rule transparency
+      whyRuleSelected: 'Why This Rate Was Selected',
+      ruleDetails: 'Automatic Rule Applied',
+      selectedWorkingValue: 'Selected working value',
+      ruleSource: 'Source Protocol',
+
+      // Actions
+      saveToHistory: 'Save Calculation to History',
+      savedSuccess: 'Calculation successfully saved to Feed History!',
+      saving: 'Saving...',
+      resetBtn: 'Clear Form',
+
+      // Safety / Scientific Note
+      scientificNoteTitle: 'Important Scientific & Feeding Safety Note',
+      scientificNote: 'Feeding rates are reference starting values. Actual feeding should be adjusted according to fish appetite, water temperature, dissolved oxygen, feed quality, fish health, culture density and observed growth.',
+    },
+
+    // Feed History
+    history: {
+      title: 'Feed History Log',
+      subtitle: 'Complete record of past feeding observations & calculations',
+      exportCsv: 'Export CSV (Excel)',
+      noRecords: 'No feeding records found.',
+      date: 'Date & Time',
+      species: 'Species',
+      stage: 'Stage',
+      stocked: 'Stocked',
+      survival: 'Survival',
+      avgWeight: 'Avg Weight',
+      biomass: 'Biomass',
+      rate: 'Rate',
+      dailyFeed: 'Daily Feed',
+      morning: 'Morning',
+      evening: 'Evening',
+      cost: 'Cost',
+      source: 'Source',
+      actions: 'Actions',
+      viewDetails: 'View Details',
+      deleteRecord: 'Delete Record',
+      confirmDelete: 'Are you sure you want to delete this record?',
+      filterSpecies: 'Filter by species',
+      allSpecies: 'All Species',
+      searchPlaceholder: 'Search records...',
+      detailsTitle: 'Feed Calculation Details',
+      close: 'Close',
+    },
+
+    // Pond Management
+    ponds: {
+      title: 'Pond Management',
+      subtitle: 'Track your ponds, stocking density and biomass independently',
+      addPond: 'Add New Pond',
+      noPonds: 'No ponds registered yet. Add your first fish pond!',
+      pondName: 'Pond Name / ID',
+      area: 'Area (Acres)',
+      depth: 'Depth (Feet)',
+      species: 'Primary Species',
+      cultureStage: 'Culture Stage',
+      stockingCount: 'Stocking Count',
+      survival: 'Survival (%)',
+      avgWeight: 'Average Weight (g)',
+      biomass: 'Estimated Biomass (kg)',
+      actions: 'Actions',
+      edit: 'Edit',
+      delete: 'Delete',
+      confirmDelete: 'Delete this pond record?',
+      modalAddTitle: 'Add New Pond',
+      modalEditTitle: 'Edit Pond Details',
+      savePond: 'Save Pond',
+      cancel: 'Cancel',
+      independentNote: 'Note: Pond selection is kept independent from the Feed Calculator for effortless quick calculations.',
+    },
+
+    // FCR Module
+    fcr: {
+      title: 'Feed Conversion Ratio (FCR) Calculator',
+      subtitle: 'Evaluate your feed efficiency based on actual feed provided and fish biomass gain',
+      principleNote: 'FCR uses actual feed given and actual biomass gain.',
+      formulaTitle: 'FCR Mathematical Formula',
+      formulaText: 'FCR = Total Actual Feed Given (kg) ÷ Net Biomass Gain (kg)',
+      gainFormulaText: 'Net Biomass Gain = Final Harvest Biomass (kg) − Initial Stocked Biomass (kg)',
+      
+      // Inputs
+      feedGivenLabel: 'Total Actual Feed Given (kg)',
+      feedGivenPlaceholder: 'e.g. 1500',
+      feedGivenHelp: 'Total actual kg of feed fed across the culture cycle',
+      initialBiomassLabel: 'Initial Biomass Stocked (kg)',
+      initialBiomassPlaceholder: 'e.g. 100',
+      initialBiomassHelp: 'Number stocked × initial sample weight (kg)',
+      finalBiomassLabel: 'Final Biomass Harvested (kg)',
+      finalBiomassPlaceholder: 'e.g. 1100',
+      finalBiomassHelp: 'Total final weight of harvested fish (kg)',
+
+      // Results
+      calculateBtn: 'Calculate FCR',
+      resultTitle: 'Calculated FCR Result',
+      netGainLabel: 'Net Biomass Gain',
+      fcrRating: 'FCR Rating',
+      ratingExcellent: 'Excellent (< 1.3) - High feeding efficiency!',
+      ratingGood: 'Good (1.3 - 1.6) - Profitable aquaculture range.',
+      ratingAverage: 'Average (1.6 - 1.9) - Room for feed management improvement.',
+      ratingHigh: 'High (> 1.9) - Potential overfeeding or feed loss.',
+      errPositiveGain: 'Final biomass must be greater than initial biomass to calculate gain.',
+      errInputs: 'Please enter valid positive numbers for feed and biomass.',
+    },
+
+    // Help & Protocols
+    help: {
+      title: 'Aquaculture Knowledge & Help',
+      subtitle: 'Guidelines, protocols, and standard tables for fish farmers',
+      tableTitle: 'ICAR-CIFA Standard Feeding Reference Rates',
+      tipsTitle: 'Daily Farm Management Checklist',
+      tipFeedBags: 'Feed Bag Rule: 1 bag = 40 kg. Monitor bag consumption closely.',
+      tipTray: 'Feed Tray Observation: Inspect feeding check trays 1.5–2 hours after broadcasting. If feed remains, cut feeding by 20–30%.',
+      tipOxygen: 'Early Morning Aeration: Dissolved oxygen is lowest at dawn (4–6 AM). Aerate or delay feeding if fish are gasping.',
+      dbSetupTitle: 'Supabase Database Integration',
+      dbSetupDesc: 'You can connect your own free Supabase cloud database to synchronize records across multiple devices. The app also works 100% locally with offline storage.',
+    },
+
+    // Supabase Settings Modal
+    supabaseModal: {
+      title: 'Supabase Cloud Connection',
+      subtitle: 'Enter your project credentials to enable cloud persistence',
+      urlLabel: 'Supabase Project URL',
+      urlPlaceholder: 'https://xyzcompany.supabase.co',
+      anonKeyLabel: 'Supabase Anon / Public Key',
+      anonKeyPlaceholder: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+      saveCredentials: 'Save & Connect',
+      disconnect: 'Use Local Storage Only',
+      viewSql: 'View Supabase PostgreSQL Schema',
+      close: 'Close',
+      connectedSuccess: 'Connected to Supabase successfully!',
+      connectionFailed: 'Failed to connect. Check URL and Anon Key.',
+      localActive: 'Running in Local Offline Mode.',
+    },
+
+    // Authentication (Mobile & Password)
+    auth: {
+      loginTitle: 'Farmer Login',
+      loginSubtitle: 'Sign in to access your ponds, feed records and custom rules',
+      signupTitle: 'New Farmer Registration',
+      signupSubtitle: 'Create your account to start managing your fish farms',
+      mobileLabel: 'Mobile Number',
+      mobilePlaceholder: 'Enter 10-digit mobile number',
+      passwordLabel: 'Password',
+      passwordPlaceholder: 'Enter password (min 4 characters)',
+      nameLabel: 'Farmer / Farm Name',
+      namePlaceholder: 'e.g. Ramesh Patil / Patil Fishery',
+      loginBtn: 'Login to Farm',
+      signupBtn: 'Create Account',
+      demoLoginBtn: '1-Click Demo Login (Ramesh Patil)',
+      skipLogin: 'Continue as Guest',
+      dontHaveAccount: "Don't have an account? Register here",
+      alreadyHaveAccount: 'Already registered? Login here',
+      rememberMe: 'Remember me on this phone',
+      forgotPassword: 'Forgot password?',
+      errMobile: 'Please enter a valid 10-digit mobile number.',
+      errPassword: 'Password must be at least 4 characters long.',
+      errName: 'Please enter your name or farm name.',
+      errInvalidCredentials: 'Invalid mobile number or password.',
+      welcomeUser: 'Namaste',
+      logout: 'Logout',
+      guestUser: 'Guest Farmer',
+    }
+  },
+
+  mr: {
+    appTitle: 'स्मार्ट मत्स्य खाद्य व्यवस्थापक',
+    appMarathiTitle: 'Smart Aquaculture Feed Manager',
+    tagline: 'शेतकरी नोंदी भरतो; प्रणाली स्वयंचलित गणना करते.',
+    maharashtraNote: 'महाराष्ट्रातील व भारतातील मत्स्य उत्पादक शेतकऱ्यांसाठी समर्पित',
+
+    // Navigation
+    nav: {
+      dashboard: 'डॅशबोर्ड',
+      calculator: 'खाद्य गणक',
+      history: 'खाद्य इतिहास',
+      ponds: 'तळे व्यवस्थापन',
+      fcr: 'एफसीआर (FCR)',
+      help: 'मदत व माहिती',
+    },
+
+    // Header
+    header: {
+      language: 'भाषा',
+      supabaseOnline: 'क्लाउड सिंक चालू',
+      supabaseOffline: 'ऑफलाइन स्थानिक मोड',
+      connectDb: 'सुपाबेस सेटिंग्ज',
+    },
+
+    // Dashboard
+    dashboard: {
+      title: 'शेतकरी डॅशबोर्ड',
+      subtitle: 'आजच्या मत्स्य खाद्य गरजेचा संक्षिप्त आढावा',
+      todayFeed: 'आजचे एकूण खाद्य',
+      todayCost: 'आजचा खाद्य खर्च',
+      savedPonds: 'नोंदवलेली तळी',
+      feedRecords: 'एकूण खाद्य नोंदी',
+      calculateTodayFeed: 'आजचे खाद्य मोजा',
+      quickSummaryTitle: 'अलीकडील खाद्य गणना',
+      noRecentCalculations: 'अद्याप कोणत्याही नोंदी नाहीत. आजचे खाद्य मोजून सुरुवात करा.',
+      viewAllHistory: 'सर्व इतिहास पहा',
+      keyTipsTitle: 'खाद्य देण्याचे सुवर्ण नियम',
+      tip1: 'उत्तम पचनासाठी ५०% खाद्य सकाळी (७–८ वाजता) आणि ५०% संध्याकाळी (४–५ वाजता) द्यावे.',
+      tip2: 'पाण्यातील ऑक्सिजन कमी असताना किंवा पाण्याचे तापमान तीव्र असताना कधीही खाद्य देऊ नका.',
+      tip3: 'FCR साठी केवळ अंदाजित खाद्य नव्हे तर प्रत्यक्ष दिलेले खाद्य वापरले पाहिजे.',
+    },
+
+    // Feed Calculator
+    calculator: {
+      title: 'मत्स्य खाद्य गणक',
+      subtitle: 'तळ्यातील निरीक्षणे भरा; अचूक खाद्याचे प्रमाण तात्काळ मोजा.',
+
+      // Inputs
+      speciesLabel: 'माशांची जात',
+      speciesPlaceholder: 'माशांची जात निवडा',
+      cultureStageLabel: 'संवर्धन टप्पा',
+      cultureStagePlaceholder: 'टप्पा निवडा',
+      stockedLabel: 'साठवणूक केलेल्या माशांची संख्या',
+      stockedPlaceholder: 'उदा. १००००',
+      stockedHelp: 'तळ्यात सोडलेल्या बियाण्यांची एकूण संख्या',
+      survivalLabel: 'जिवंत राहण्याचे प्रमाण (सर्व्हायव्हल %)',
+      survivalPlaceholder: 'उदा. ८५',
+      survivalHelp: 'अंदाजित जिवंत राहण्याचे प्रमाण (१% ते १००%)',
+      weightLabel: 'सरासरी माशाचे वजन (ग्रॅम)',
+      weightPlaceholder: 'उदा. ५०',
+      weightHelp: 'नमुना माशाचे सरासरी वजन ग्रॅममध्ये',
+      feedPriceLabel: 'खाद्याचा दर प्रति किलो (₹/किलो)',
+      feedPricePlaceholder: 'उदा. ४०',
+      feedPriceHelp: 'बाजारातील खरेदी केलेला खाद्य दर',
+      cultureMonthLabel: 'संवर्धन कालावधी / महिने',
+      cultureMonthPlaceholder: 'महिना निवडा किंवा लिहा (१–१२)',
+      cultureMonthHelp: 'साठवणूक करून किती महिने झाले (पंगासियससाठी आवश्यक)',
+
+      // Custom Species manual rate
+      manualRateLabel: 'स्वतः खाद्य दर (%)',
+      manualRatePlaceholder: 'उदा. ३.०',
+      manualRateEnteredByFarmer: 'शेतकऱ्याने स्वतः भरलेला खाद्य दर',
+      sourceFarmerEntered: 'शेतकऱ्याने भरलेला दर',
+      sourceAutomaticRule: 'स्वयंचलित नियम',
+
+      // Validation & messages
+      incompleteForm: 'गणना पाहण्यासाठी आवश्यक माहिती भरा.',
+      errStocked: 'साठवणूक केलेली संख्या ० पेक्षा जास्त असावी.',
+      errSurvival: 'जिवंत राहण्याचे प्रमाण १% ते १००% दरम्यान असावे.',
+      errWeight: 'सरासरी वजन ० ग्रॅमपेक्षा जास्त असावे.',
+      errPrice: 'खाद्य दर ० किंवा अधिक असावा.',
+      errManualRate: 'स्वतः भरलेला खाद्य दर ०% पेक्षा जास्त असावा.',
+      errPangasiusMonth: 'कृपया पंगासियस नियमासाठी संवर्धन महिना भरा.',
+
+      // Special Protocols
+      nurserySpawnNote: 'नर्सरी खाद्य गणनेसाठी सुरुवातीच्या स्पॉनचे वजन आवश्यक आहे.',
+      nurserySpawnSubnote: 'प्रमाणित CIFA नियम: पहिल्या ५–७ दिवसांसाठी सुरुवातीच्या स्पॉन वजनाच्या ४ पट; पुढील कालावधीत ८ पट खाद्य द्यावे.',
+      magurProtocolNote: 'या पालन परिस्थितीसाठी प्रमाणित मागूर खाद्य पद्धत वापरा.',
+      magurProtocolSubnote: 'मागूर (Clarias batrachus) खाद्याचे प्रमाण जिवंत खाद्य आणि ओले/गोळी खाद्य यांच्या मिश्रणावर अवलंबून असते.',
+      grassCarpForageNote: 'ग्रास कार्पसाठी प्रमाणित चारा व पूरक खाद्य वेळापत्रक वापरा.',
+      grassCarpForageSubnote: 'ग्रास कार्प प्रामुख्याने पाणवनस्पती, शेवाळ आणि हिरवा चारा (हायड्रिला/नेपियर) यावर अवलंबून असतो.',
+      noRuleFound: 'खाद्य दर उपलब्ध नाही: या जात/अवस्था/वजन संयोजनासाठी प्रमाणित स्वयंचलित खाद्य दर उपलब्ध नाही.',
+
+      // Results
+      resultsTitle: 'स्वयंचलित गणना',
+      resultsSubtitle: 'ICAR-CIFA प्रमाणित शास्त्रीय सूत्रांवर आधारित दैनंदिन खाद्य शिफारस',
+      survivingFish: 'जिवंत मासळी',
+      averageBiomass: 'सरासरी बायोमास',
+      feedingRate: 'खाद्य दर',
+      dailyFeed: 'दैनंदिन खाद्य गरज',
+      morningFeed: 'सकाळचे खाद्य (५०%)',
+      eveningFeed: 'संध्याकाळचे खाद्य (५०%)',
+      dailyFeedCost: 'दैनंदिन खाद्य खर्च',
+      perDay: '/दिवस',
+      fishCount: 'नग',
+
+      // Rule transparency
+      whyRuleSelected: 'हा दर का निवडला?',
+      ruleDetails: 'लागू झालेला स्वयंचलित नियम',
+      selectedWorkingValue: 'निवडलेला दर',
+      ruleSource: 'प्रमाणित संदर्भ',
+
+      // Actions
+      saveToHistory: 'नोंदीमध्ये जतन करा',
+      savedSuccess: 'गणना यशस्वीरीत्या इतिहासामध्ये जतन केली गेली!',
+      saving: 'जतन करत आहे...',
+      resetBtn: 'माहिती पुसा',
+
+      // Safety / Scientific Note
+      scientificNoteTitle: 'महत्त्वाची शास्त्रीय व सुरक्षितता सूचना',
+      scientificNote: 'खाद्य दर हे संदर्भासाठी सुरुवातीचे दर आहेत. प्रत्यक्ष खाद्य देताना मासळीची भूक, पाण्याचे तापमान, विरघळलेला ऑक्सिजन, खाद्याची गुणवत्ता, मत्स्य घनता आणि वाढ यानुसार आवश्यक समायोजन करावे.',
+    },
+
+    // Feed History
+    history: {
+      title: 'खाद्य नोंदी इतिहास',
+      subtitle: 'मागील सर्व खाद्य गणना आणि नोंदींचा संपूर्ण संग्रह',
+      exportCsv: 'CSV निर्यात करा (Excel)',
+      noRecords: 'अद्याप कोणत्याही नोंदी उपलब्ध नाहीत.',
+      date: 'तारीख व वेळ',
+      species: 'जात',
+      stage: 'टप्पा',
+      stocked: 'साठवणूक',
+      survival: 'सर्व्हायव्हल',
+      avgWeight: 'सरासरी वजन',
+      biomass: 'बायोमास',
+      rate: 'खाद्य दर',
+      dailyFeed: 'दैनिक खाद्य',
+      morning: 'सकाळचे',
+      evening: 'संध्याकाळचे',
+      cost: 'खर्च',
+      source: 'स्रोत',
+      actions: 'कृती',
+      viewDetails: 'तपशील पहा',
+      deleteRecord: 'नोंद हटवा',
+      confirmDelete: 'तुम्हाला ही नोंद नक्की हटवायची आहे का?',
+      filterSpecies: 'जातीनुसार शोधा',
+      allSpecies: 'सर्व जाती',
+      searchPlaceholder: 'नोंदी शोधा...',
+      detailsTitle: 'खाद्य गणना संपूर्ण तपशील',
+      close: 'बंद करा',
+    },
+
+    // Pond Management
+    ponds: {
+      title: 'तळे व्यवस्थापन',
+      subtitle: 'आपल्या तळ्यांची माहिती, साठवणूक आणि बायोमास स्वतंत्रपणे नोंदवा',
+      addPond: 'नवीन तळे जोडा',
+      noPonds: 'अद्याप कोणतेही तळे नोंदवलेले नाही. पहिले तळे जोडा!',
+      pondName: 'तळ्याचे नाव / क्रमांक',
+      area: 'क्षेत्रफळ (एकर)',
+      depth: 'खोली (फूट)',
+      species: 'मुख्य जात',
+      cultureStage: 'संवर्धन टप्पा',
+      stockingCount: 'साठवणूक संख्या',
+      survival: 'जिवंत प्रमाण (%)',
+      avgWeight: 'सरासरी वजन (ग्रॅम)',
+      biomass: 'अंदाजित बायोमास (किलो)',
+      actions: 'कृती',
+      edit: 'बदला',
+      delete: 'हटवा',
+      confirmDelete: 'हे तळे नक्की हटवायचे का?',
+      modalAddTitle: 'नवीन तळे नोंदवा',
+      modalEditTitle: 'तळ्याची माहिती बदला',
+      savePond: 'तळे जतन करा',
+      cancel: 'रद्द करा',
+      independentNote: 'टीप: जलद गणनेसाठी तळे निवडणे हे मुख्य खाद्य गणकापासून पूर्णपणे स्वतंत्र ठेवले आहे.',
+    },
+
+    // FCR Module
+    fcr: {
+      title: 'एफसीआर (FCR) गणक',
+      subtitle: 'प्रत्यक्ष दिलेले खाद्य आणि माशांच्या वजनातील वाढ यावरून खाद्याची कार्यक्षमता तपासा',
+      principleNote: 'FCR साठी प्रत्यक्ष दिलेले खाद्य आणि प्रत्यक्ष बायोमास वाढ वापरली जाते.',
+      formulaTitle: 'FCR चे गणितीय सूत्र',
+      formulaText: 'FCR = एकूण प्रत्यक्ष दिलेले खाद्य (किलो) ÷ निव्वळ बायोमास वाढ (किलो)',
+      gainFormulaText: 'निव्वळ बायोमास वाढ = काढणीचे अंतिम बायोमास (किलो) − सुरुवातीचे सोडलेले बायोमास (किलो)',
+
+      // Inputs
+      feedGivenLabel: 'एकूण प्रत्यक्ष दिलेले खाद्य (किलो)',
+      feedGivenPlaceholder: 'उदा. १५००',
+      feedGivenHelp: 'संपूर्ण संवर्धन काळात प्रत्यक्ष तलावात टाकलेले एकूण खाद्य (किलो)',
+      initialBiomassLabel: 'सुरुवातीचे साठवलेले बायोमास (किलो)',
+      initialBiomassPlaceholder: 'उदा. १००',
+      initialBiomassHelp: 'साठवलेली संख्या × सुरुवातीचे वजन (किलो)',
+      finalBiomassLabel: 'अंतिम काढणीचे बायोमास (किलो)',
+      finalBiomassPlaceholder: 'उदा. ११००',
+      finalBiomassHelp: 'काढणीच्या वेळी तळ्यातील माशांचे एकूण अंतिम वजन (किलो)',
+
+      // Results
+      calculateBtn: 'FCR मोजा',
+      resultTitle: 'FCR गणना निकाल',
+      netGainLabel: 'निव्वळ बायोमास वाढ',
+      fcrRating: 'FCR मूल्यांकन',
+      ratingExcellent: 'उत्कृष्ट (< १.३) - खाद्याचा अत्यंत कार्यक्षम वापर!',
+      ratingGood: 'चांगले (१.३ - १.६) - फायदेशीर मत्स्यपालन प्रमाण.',
+      ratingAverage: 'मध्यम (१.६ - १.९) - खाद्य व्यवस्थापनात सुधारणेला वाव आहे.',
+      ratingHigh: 'अधिक (> १.९) - जास्त खाद्य दिले जात असण्याची किंवा वाया जाण्याची शक्यता.',
+      errPositiveGain: 'निव्वळ वाढ मोजण्यासाठी अंतिम बायोमास सुरुवातीच्या बायोमासपेक्षा जास्त असावे.',
+      errInputs: 'कृपया खाद्य आणि बायोमाससाठी योग्य धन संख्या भरा.',
+    },
+
+    // Help & Protocols
+    help: {
+      title: 'मत्स्य शेती माहिती व मदत',
+      subtitle: 'शेतकऱ्यांसाठी प्रमाणित तक्ते, मार्गदर्शक तत्त्वे व नियम',
+      tableTitle: 'ICAR-CIFA प्रमाणित दैनंदिन खाद्य संदर्भ तक्ता',
+      tipsTitle: 'दैनंदिन व्यवस्थापनाचे महत्त्वाचे मुद्दे',
+      tipFeedBags: 'खाद्य पोत्यांचा हिशोब: १ पोते = ४० किलो. खाद्याच्या पोत्यांचा नियमित हिशोब ठेवा.',
+      tipTray: 'फीड ट्रे (चेक ट्रे) निरीक्षण: खाद्य दिल्यानंतर १.५ ते २ तासांनी तपासा. खाद्य शिल्लक राहिल्यास पुढील वेळेचे खाद्य २०-३०% कमी करा.',
+      tipOxygen: 'पहाटेचे ऑक्सिजन संकट: पहाटेच्या वेळी (सकाळी ४ ते ६) ऑक्सिजन सर्वात कमी असतो. मासे वर येऊन श्वास घेत असल्यास ताबडतोब एरिएटर चालू करा.',
+      dbSetupTitle: 'सुपाबेस क्लाउड डेटाबेस जोडणी',
+      dbSetupDesc: 'तुम्ही तुमचा स्वतःचा विनामूल्य सुपाबेस क्लाउड डेटाबेस जोडून सर्व नोंदी सुरक्षित ठेवू शकता. ॲप कोणत्याही इंटरनेटशिवाय स्थानिक पातळीवरही १००% काम करते.',
+    },
+
+    // Supabase Settings Modal
+    supabaseModal: {
+      title: 'सुपाबेस क्लाउड जोडणी',
+      subtitle: 'क्लाउड सिंक सुरू करण्यासाठी आपल्या प्रोजेक्टची माहिती भरा',
+      urlLabel: 'सुपाबेस प्रोजेक्ट URL',
+      urlPlaceholder: 'https://xyzcompany.supabase.co',
+      anonKeyLabel: 'सुपाबेस अ‍ॅनॉन की (Anon Key)',
+      anonKeyPlaceholder: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+      saveCredentials: 'जतन करा आणि जोडा',
+      disconnect: 'केवळ स्थानिक मोड वापरा',
+      viewSql: 'सुपाबेस डेटाबेस स्कीमा पहा',
+      close: 'बंद करा',
+      connectedSuccess: 'सुपाबेस क्लाउड यशस्वीरीत्या जोडले गेले!',
+      connectionFailed: 'जोडणी अयशस्वी. URL आणि की पुन्हा तपासा.',
+      localActive: 'स्थानिक ऑफलाइन मोड कार्यरत आहे.',
+    },
+
+    // Authentication (Mobile & Password)
+    auth: {
+      loginTitle: 'शेतकरी लॉगिन',
+      loginSubtitle: 'आपली तळी, खाद्य नोंदी आणि अहवाल पाहण्यासाठी लॉगिन करा',
+      signupTitle: 'नवीन शेतकरी नोंदणी',
+      signupSubtitle: 'आपल्या मत्स्य शेतीचे व्यवस्थापन करण्यासाठी खाते उघडा',
+      mobileLabel: 'मोबाईल नंबर',
+      mobilePlaceholder: '१० अंकी मोबाईल नंबर टाका',
+      passwordLabel: 'पासवर्ड',
+      passwordPlaceholder: 'पासवर्ड टाका (किमान ४ अक्षरे)',
+      nameLabel: 'शेतकऱ्याचे / फार्मचे नाव',
+      namePlaceholder: 'उदा. रमेश पाटील / पाटील फिशरी',
+      loginBtn: 'शेतात प्रवेश करा (लॉगिन)',
+      signupBtn: 'नवीन खाते उघडा',
+      demoLoginBtn: '१-क्लिक डेमो लॉगिन (रमेश पाटील)',
+      skipLogin: 'लॉगिन न करता पुढे जा',
+      dontHaveAccount: 'खाते नाही का? येथे नोंदणी करा',
+      alreadyHaveAccount: 'आधीच नोंदणी केली आहे का? लॉगिन करा',
+      rememberMe: 'या फोनवर मला लक्षात ठेवा',
+      forgotPassword: 'पासवर्ड विसरलात का?',
+      errMobile: 'कृपया योग्य १० अंकी मोबाईल नंबर टाका.',
+      errPassword: 'पासवर्ड किमान ४ अक्षरांचा असावा.',
+      errName: 'कृपया आपले किंवा फार्मचे नाव टाका.',
+      errInvalidCredentials: 'मोबाईल नंबर किंवा पासवर्ड चुकीचा आहे.',
+      welcomeUser: 'नमस्ते',
+      logout: 'बाहेर पडा (Logout)',
+      guestUser: 'अतिथी शेतकरी',
+    }
+  }
+};

@@ -1,0 +1,33 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+  
+  body {
+    color: #0f172a;
+    background-color: #f8fafc;
+  }
+
+  /* Improve numeric font appearance */
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+  }
+}
+
+/* Custom animations & smooth transitions */
+.transition-card {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.ripple-bg {
+  background: radial-gradient(circle at 10% 20%, rgba(13, 148, 136, 0.05) 0%, rgba(20, 184, 166, 0.02) 90%);
+}
