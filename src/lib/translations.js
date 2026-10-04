@@ -120,6 +120,62 @@ export const translations = {
       // Safety / Scientific Note
       scientificNoteTitle: 'Important Scientific & Feeding Safety Note',
       scientificNote: 'Feeding rates are reference starting values. Actual feeding should be adjusted according to fish appetite, water temperature, dissolved oxygen, feed quality, fish health, culture density and observed growth.',
+
+      // Feeding Modes
+      modeAutomatic: 'Automatic',
+      modeManual: 'Manual',
+      modeReference: 'Reference / Assumption',
+      modeAutomaticDesc: 'Rate selected automatically from Fishry’s configured feeding rules',
+      modeManualDesc: 'Rate entered or selected by the farmer',
+      modeReferenceDesc: 'Biomass or feeding basis is derived from a project reference/assumption',
+
+      // Biomass Consideration
+      biomassConsideration: 'Biomass Consideration',
+      projectAssumptionSpawn: 'Project assumption — 1 million spawn = 1.5 kg',
+      nurserySpawnLabel: 'Number of Spawn Stocked',
+      spawnWeightNotNeeded: 'Spawn average weight is difficult to measure; not required for IMC Nursery',
+      calculatedInitialBiomass: 'Calculated Initial Biomass',
+      normalBiomassConsideration: 'Biomass consideration: Surviving fish = Stocked × Survival % ÷ 100; Biomass = Surviving fish × Avg Weight ÷ 1,000',
+
+      // IMC Nursery Reference
+      nurseryRefTitle: 'Reference Nursery Feeding Basis',
+      nurseryFirst5Days: 'First 5 days: 400% of initial biomass',
+      nurseryAfter5Days: 'After first 5 days: 800% of initial biomass',
+      nurseryQuick400: 'First 5 days (400%)',
+      nurseryQuick800: 'After 5 days (800%)',
+      nurseryManualPrompt: 'Manual feeding selection is required. Spawn average weight is difficult to measure accurately at this stage. Use a verified feeding protocol and adjust according to feeding response and culture conditions.',
+
+      // IMC Rearing Period
+      rearingPeriodLabel: 'Rearing Period',
+      rearingM1: 'First month (8–10% BW/day)',
+      rearingM2: 'Second month (6–8% BW/day)',
+      rearingLater: 'Later stages (5–6% BW/day)',
+      rearingRefRange: 'Reference Feeding Range',
+      rearingSelectedRate: 'Selected Rate',
+
+      // IMC Grow-out Phase
+      growoutPhaseLabel: 'Grow-out Stage / Phase',
+      growoutInitial: 'Initial stage (5–6% BW/day)',
+      growoutMid: 'Mid stage (3–4% BW/day)',
+      growoutFinal: 'Final stage (2–3% BW/day)',
+      growoutRefRange: 'Reference Feeding Range',
+      growoutSelectedRate: 'Selected Rate',
+
+      // Contextual Warnings
+      generalWarningTitle: 'IMPORTANT: Culture Condition Adjustment',
+      generalWarning: 'This is an estimated feed requirement based on the information entered and the selected feeding rule/reference. Actual feeding should be adjusted according to appetite, uneaten feed, growth, water quality, temperature, dissolved oxygen, stocking density, fish health, feed quality and other culture conditions.',
+      imcNurseryWarningTitle: 'MANUAL FEEDING REQUIRED',
+      imcNurseryWarning: 'Average spawn weight is difficult to measure accurately at nursery stage. Fishry therefore does not automatically determine a normal biomass-based feeding percentage.\n\nBiomass consideration:\nProject assumption — 1 million spawn = 1.5 kg.\n\nReference:\nFirst 5 days — 400% of initial biomass\nAfter first 5 days — 800% of initial biomass\n\nUse a verified feeding protocol and adjust according to feeding response and culture conditions.',
+      imcRearingWarningTitle: 'REFERENCE FEEDING RANGE',
+      imcRearingWarning: 'The displayed rate is a reference starting range, not a fixed prescription. Adjust according to fish growth, water quality, plankton availability and feeding response.',
+      imcGrowoutWarningTitle: 'REFERENCE FEEDING RANGE',
+      imcGrowoutWarning: 'The displayed rate is a reference starting range. Monitor feeding response and adjust according to culture conditions.',
+      magurWarningTitle: 'MANUAL FEEDING REQUIRED',
+      magurWarning: 'No universal automatic feeding rate is applied for Magur.\n\nUse a verified culture/feed protocol and enter the appropriate rate manually.',
+      grassCarpWarningTitle: 'SPECIAL FEEDING METHOD',
+      grassCarpWarning: 'Grass Carp feeding depends on forage/vegetation availability and culture conditions. Fishry does not apply a universal automatic pellet feeding percentage.',
+      customWarningTitle: 'MANUAL RATE REQUIRED',
+      customWarning: 'Fishry does not have a predefined feeding rule for this species.\nEnter a feeding rate based on a verified culture/feed protocol.',
     },
 
     // Feed History
@@ -397,6 +453,62 @@ export const translations = {
       // Safety / Scientific Note
       scientificNoteTitle: 'महत्त्वाची शास्त्रीय व सुरक्षितता सूचना',
       scientificNote: 'खाद्य दर हे संदर्भासाठी सुरुवातीचे दर आहेत. प्रत्यक्ष खाद्य देताना मासळीची भूक, पाण्याचे तापमान, विरघळलेला ऑक्सिजन, खाद्याची गुणवत्ता, मत्स्य घनता आणि वाढ यानुसार आवश्यक समायोजन करावे.',
+
+      // Feeding Modes
+      modeAutomatic: 'स्वयंचलित',
+      modeManual: 'मॅन्युअल',
+      modeReference: 'संदर्भ / गृहीतक',
+      modeAutomaticDesc: 'प्रमाणित खाद्य नियमांमधून स्वयंचलित निवडलेला दर',
+      modeManualDesc: 'शेतकऱ्याने स्वतः भरलेला किंवा निवडलेला दर',
+      modeReferenceDesc: 'प्रकल्प संदर्भ किंवा गृहीतकावर आधारित बायोमास किंवा दर',
+
+      // Biomass Consideration
+      biomassConsideration: 'बायोमास विचार व आधार',
+      projectAssumptionSpawn: 'प्रकल्प गृहीतक — १० लाख स्पॉन = १.५ किलो',
+      nurserySpawnLabel: 'साठवणूक केलेल्या स्पॉनची संख्या',
+      spawnWeightNotNeeded: 'नर्सरी टप्प्यावर स्पॉनचे सरासरी वजन मोजणे कठीण असल्याने आवश्यक नाही',
+      calculatedInitialBiomass: 'हिशोब केलेला सुरुवातीचा बायोमास',
+      normalBiomassConsideration: 'बायोमास विचार: जिवंत मासे = साठवणूक × सर्व्हायव्हल % ÷ १००; बायोमास = जिवंत मासे × सरासरी वजन ÷ १,०००',
+
+      // IMC Nursery Reference
+      nurseryRefTitle: 'नर्सरी संदर्भ खाद्य आधार',
+      nurseryFirst5Days: 'पहिले ५ दिवस: सुरुवातीच्या बायोमासच्या ४००%',
+      nurseryAfter5Days: '५ दिवसांनंतर: सुरुवातीच्या बायोमासच्या ८००%',
+      nurseryQuick400: 'पहिले ५ दिवस (४००%)',
+      nurseryQuick800: '५ दिवसांनंतर (८००%)',
+      nurseryManualPrompt: 'मॅन्युअल खाद्य दर निवडणे आवश्यक आहे. नर्सरी टप्प्यावर स्पॉनचे सरासरी वजन अचूक मोजणे कठीण असते. प्रमाणित खाद्य पद्धत वापरा आणि परिस्थितीनुसार दर ठरवा.',
+
+      // IMC Rearing Period
+      rearingPeriodLabel: 'रिअरिंग कालावधी',
+      rearingM1: 'पहिला महिना (८–१०% बायोमास/दिवस)',
+      rearingM2: 'दुसरा महिना (६–८% बायोमास/दिवस)',
+      rearingLater: 'पुढील टप्पे (५–६% बायोमास/दिवस)',
+      rearingRefRange: 'संदर्भ खाद्य श्रेणी',
+      rearingSelectedRate: 'निवडलेला दर',
+
+      // IMC Grow-out Phase
+      growoutPhaseLabel: 'ग्रो-आऊट टप्पा / स्थिती',
+      growoutInitial: 'सुरुवातीचा टप्पा (५–६% बायोमास/दिवस)',
+      growoutMid: 'मध्यम टप्पा (३–४% बायोमास/दिवस)',
+      growoutFinal: 'अंतिम टप्पा (२–३% बायोमास/दिवस)',
+      growoutRefRange: 'संदर्भ खाद्य श्रेणी',
+      growoutSelectedRate: 'निवडलेला दर',
+
+      // Contextual Warnings
+      generalWarningTitle: 'महत्त्वाची सूचना: प्रत्यक्ष परिस्थितीनुसार खाद्य समायोजन',
+      generalWarning: 'ही भरलेल्या माहितीवर आणि निवडलेल्या नियमावर/संदर्भावर आधारित अंदाजित खाद्य गरज आहे. प्रत्यक्ष खाद्य देताना माशांची भूक, न खाल्लेले शिल्लक खाद्य, वाढ, पाण्याची गुणवत्ता, तापमान, विरघळलेला ऑक्सिजन, साठवणूक घनता, माशांचे आरोग्य, खाद्याचा दर्जा आणि इतर संवर्धन परिस्थितीनुसार योग्य बदल करावा.',
+      imcNurseryWarningTitle: 'मॅन्युअल खाद्य दर आवश्यक',
+      imcNurseryWarning: 'नर्सरी टप्प्यावर स्पॉनचे सरासरी वजन अचूक मोजणे कठीण असते. त्यामुळे Fishry स्वयंचलित बायोमास टक्केवारी ठरवत नाही.\n\nबायोमास विचार:\nप्रकल्प गृहीतक — १० लाख स्पॉन = १.५ किलो.\n\nसंदर्भ:\nपहिले ५ दिवस — सुरुवातीच्या बायोमासच्या ४००%\n५ दिवसांनंतर — सुरुवातीच्या बायोमासच्या ८००%\n\nप्रमाणित खाद्य पद्धत वापरा आणि खाद्य प्रतिसाद व परिस्थितीनुसार योग्य दर ठरवा.',
+      imcRearingWarningTitle: 'संदर्भ खाद्य श्रेणी',
+      imcRearingWarning: 'दर्शविलेला दर ही संदर्भासाठी सुरुवातीची श्रेणी आहे, अंतिम बंधनकारक नियम नाही. माशांची वाढ, पाण्याची गुणवत्ता, प्लॅवक उपलब्धता आणि खाण्याचा प्रतिसाद यानुसार योग्य दर निवडा.',
+      imcGrowoutWarningTitle: 'संदर्भ खाद्य श्रेणी',
+      imcGrowoutWarning: 'दर्शविलेला दर ही संदर्भासाठी सुरुवातीची श्रेणी आहे. खाण्याचा प्रतिसाद तपासा आणि संवर्धन परिस्थितीनुसार योग्य दर ठरवा.',
+      magurWarningTitle: 'मॅन्युअल खाद्य दर आवश्यक',
+      magurWarning: 'मागूरसाठी कोणताही सार्वत्रिक स्वयंचलित खाद्य दर लागू केलेला नाही.\n\nप्रमाणित संवर्धन/खाद्य पद्धत वापरा आणि योग्य दर स्वतः भरा.',
+      grassCarpWarningTitle: 'विशेष खाद्य पद्धत',
+      grassCarpWarning: 'ग्रास कार्पचे खाद्य वनस्पती/चाऱ्याची उपलब्धता आणि संवर्धन परिस्थितीवर अवलंबून असते. Fishry स्वयंचलित गोळी खाद्य दर लागू करत नाही.',
+      customWarningTitle: 'मॅन्युअल दर आवश्यक',
+      customWarning: 'या माशाच्या जातीसाठी Fishry कडे पूर्व-निर्धारित खाद्य नियम उपलब्ध नाही.\nप्रमाणित संवर्धन/खाद्य पद्धतीनुसार स्वतः खाद्य दर भरा.',
     },
 
     // Feed History

@@ -50,6 +50,7 @@ export const SPECIES_LIST = [
     needsMonth: false,
     method: 'BIOMASS_PERCENT',
     isWeightBased: true,
+    hasRange: true,
   },
   {
     id: 'pangasius',
@@ -69,7 +70,8 @@ export const SPECIES_LIST = [
     category: 'Catfish',
     allowStages: ['Nursery', 'Rearing', 'Grow-out'],
     needsMonth: false,
-    method: 'VERIFIED_PROTOCOL',
+    method: 'MANUAL',
+    isManual: true,
   },
   {
     id: 'grass_carp',
@@ -79,7 +81,8 @@ export const SPECIES_LIST = [
     category: 'Exotic Carp',
     allowStages: ['Nursery', 'Rearing', 'Grow-out'],
     needsMonth: false,
-    method: 'FORAGE_BASED',
+    method: 'MANUAL',
+    isManual: true,
   },
   {
     id: 'custom',
@@ -91,6 +94,7 @@ export const SPECIES_LIST = [
     needsMonth: false,
     method: 'MANUAL',
     isCustom: true,
+    isManual: true,
   },
 ];
 
@@ -100,6 +104,12 @@ export const CULTURE_STAGES = [
   { id: 'Grow-out', name: 'Grow-out', name_mr: 'ग्रो-आऊट' },
 ];
 
+export const FEEDING_MODES = {
+  AUTOMATIC: 'AUTOMATIC',
+  MANUAL: 'MANUAL',
+  REFERENCE_ASSUMPTION: 'REFERENCE_ASSUMPTION',
+};
+
 export const FEEDING_METHODS = {
   BIOMASS_PERCENT: 'BIOMASS_PERCENT',
   INITIAL_SPAWN_WEIGHT: 'INITIAL_SPAWN_WEIGHT',
@@ -107,3 +117,25 @@ export const FEEDING_METHODS = {
   FORAGE_BASED: 'FORAGE_BASED',
   MANUAL: 'MANUAL',
 };
+
+// IMC Nursery Project Assumption and Reference Feeding
+export const IMC_NURSERY_REFERENCE = {
+  SPAWN_PER_KG_BIOMASS: 1000000,
+  BIOMASS_PER_MILLION_SPAWN_KG: 1.5,
+  DAYS_1_TO_5_RATE: 400.0,
+  DAYS_6_PLUS_RATE: 800.0,
+};
+
+// IMC Rearing Reference Ranges
+export const IMC_REARING_PERIODS = [
+  { id: 'month_1', label: 'First month', label_mr: 'पहिला महिना', rate_min: 8.0, rate_max: 10.0, default_rate: 9.0 },
+  { id: 'month_2', label: 'Second month', label_mr: 'दुसरा महिना', rate_min: 6.0, rate_max: 8.0, default_rate: 7.0 },
+  { id: 'later', label: 'Later stages', label_mr: 'पुढील टप्पे', rate_min: 5.0, rate_max: 6.0, default_rate: 5.5 },
+];
+
+// IMC Grow-out Reference Ranges
+export const IMC_GROWOUT_PHASES = [
+  { id: 'initial', label: 'Initial stage', label_mr: 'सुरुवातीचा टप्पा', rate_min: 5.0, rate_max: 6.0, default_rate: 5.5 },
+  { id: 'mid', label: 'Mid stage', label_mr: 'मध्यम टप्पा', rate_min: 3.0, rate_max: 4.0, default_rate: 3.5 },
+  { id: 'final', label: 'Final stage', label_mr: 'अंतिम टप्पा', rate_min: 2.0, rate_max: 3.0, default_rate: 2.5 },
+];
