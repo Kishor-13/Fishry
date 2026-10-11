@@ -59,3 +59,42 @@ export function calculateFcr(totalFeedKg, initialBiomassKg, finalBiomassKg) {
   const fcr = feed / netGain;
   return { isValid: true, fcr, netGain, feedGiven: feed };
 }
+
+/**
+ * FEATURE 3 — Calculate difference between Actual Feed Given and Calculated Feed Required
+ * Formulas:
+ * Difference (kg) = Actual feed given − Calculated feed required
+ * Difference (%) = [(Actual feed given − Calculated feed required) / Calculated feed required] × 100
+ * Actual feed cost = Actual feed given × Feed price per kg
+ */
+export function calculateFeedDifference(actualFeedKg, calculatedFeedKg, pricePerKg = 0) {
+  const actual = Number(actualFeedKg);
+  const calc = Number(calculatedFeedKg);
+  const price = Number(pricePerKg) || 0;
+
+  if (isNaN(actual) || actual < 0) {
+    return {
+      hasActual: false,
+      differenceKg: null,
+      differencePercent: null,
+      actualFeedCost: null,
+    };
+  }
+
+  const differenceKg = Number((actual - calc).toFixed(3));
+  let differencePercent = null;
+  if (calc > 0) {
+    differencePercent = Number((((actual - calc) / calc) * 100).toFixed(2));
+  }
+
+  const actualFeedCost = Number((actual * price).toFixed(2));
+
+  return {
+    hasActual: true,
+    actualKg: actual,
+    differenceKg,
+    differencePercent,
+    actualFeedCost,
+  };
+}
+

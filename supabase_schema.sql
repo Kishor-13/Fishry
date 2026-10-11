@@ -101,6 +101,17 @@ ON public.feed_history (created_at DESC);
 -- Migration safety for existing tables
 ALTER TABLE public.ponds ADD COLUMN IF NOT EXISTS farmer_id UUID REFERENCES public.farmers(id) ON DELETE CASCADE;
 ALTER TABLE public.feed_history ADD COLUMN IF NOT EXISTS farmer_id UUID REFERENCES public.farmers(id) ON DELETE CASCADE;
+ALTER TABLE public.feed_history ADD COLUMN IF NOT EXISTS calculated_feed NUMERIC(12, 3);
+ALTER TABLE public.feed_history ADD COLUMN IF NOT EXISTS confirmed_feed NUMERIC(12, 3);
+ALTER TABLE public.feed_history ADD COLUMN IF NOT EXISTS actual_feed NUMERIC(12, 3);
+ALTER TABLE public.feed_history ADD COLUMN IF NOT EXISTS difference_kg NUMERIC(12, 3);
+ALTER TABLE public.feed_history ADD COLUMN IF NOT EXISTS difference_percent NUMERIC(8, 2);
+ALTER TABLE public.feed_history ADD COLUMN IF NOT EXISTS actual_feed_cost NUMERIC(12, 2);
+ALTER TABLE public.feed_history ADD COLUMN IF NOT EXISTS difference_reason TEXT;
+ALTER TABLE public.feed_history ADD COLUMN IF NOT EXISTS tray_observation TEXT;
+ALTER TABLE public.feed_history ADD COLUMN IF NOT EXISTS critical_conditions TEXT[];
+ALTER TABLE public.feed_history ADD COLUMN IF NOT EXISTS culture_age_days NUMERIC(6, 1);
+ALTER TABLE public.feed_history ADD COLUMN IF NOT EXISTS feed_type TEXT;
 
 -- Enable Row Level Security (RLS)
 ALTER TABLE public.feeding_rules ENABLE ROW LEVEL SECURITY;

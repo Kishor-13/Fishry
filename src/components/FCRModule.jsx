@@ -60,10 +60,15 @@ export default function FCRModule({
       );
       setFinalBiomass(String(finBio > (initBio || 50) ? finBio : (initBio || 50) + 200));
 
-      // 3. Sum of feed history for this pond
+      // 3. Sum of feed history for this pond (use actual feed input where available)
       const pondRecords = feedHistory.filter((r) => String(r.pond_id) === String(pId));
       if (pondRecords.length > 0) {
-        const totalFeed = pondRecords.reduce((acc, curr) => acc + (Number(curr.daily_feed) || 0), 0);
+        const totalFeed = pondRecords.reduce((acc, curr) => {
+          const feedVal = (curr.actual_feed !== null && curr.actual_feed !== undefined && !isNaN(Number(curr.actual_feed)))
+            ? Number(curr.actual_feed)
+            : (Number(curr.daily_feed) || 0);
+          return acc + feedVal;
+        }, 0);
         if (totalFeed > 0) {
           handleKgChange(totalFeed.toFixed(1));
         }
@@ -145,12 +150,17 @@ export default function FCRModule({
             <h4 className="font-extrabold text-emerald-950 text-sm sm:text-base">
               {t.fcr.principleNote}
             </h4>
-            <div className="mt-2 text-xs sm:text-sm font-medium text-emerald-900/90 space-y-1">
+            <div className="mt-2 text-xs sm:text-sm font-medium text-emerald-900/90 space-y-1.5">
               <p className="font-mono bg-white/70 p-2 rounded-xl border border-emerald-200 inline-block">
                 <strong>{t.fcr.formulaText}</strong>
               </p>
               <p className="text-emerald-800">
                 {t.fcr.gainFormulaText}
+              </p>
+              <p className="text-[11px] text-emerald-900/80 pt-1 border-t border-emerald-200/80">
+                {lang === 'mr'
+                  ? '⚠️ महत्त्वाचे: प्रत्यक्ष दिलेले सर्व खाद्य माशांनी खाल्लेच असेल असे नाही, कारण काही खाद्य शिल्लक राहू शकते किंवा वाहून जाऊ शकते. गणना केलेले आणि प्रत्यक्ष दिलेले खाद्य यातील फरक म्हणजे FCR नाही.'
+                  : '⚠️ Safeguard Notice: Feed given may not equal feed consumed because some feed may remain uneaten or be lost in the water. The difference between calculated feed and actual feed is not FCR.'}
               </p>
             </div>
           </div>

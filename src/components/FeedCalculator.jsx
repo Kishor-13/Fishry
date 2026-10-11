@@ -23,16 +23,28 @@ import {
   BookOpen,
   Calendar,
   AlertCircle,
-  Sliders
+  Sliders,
+  CheckSquare,
+  Square,
+  ClipboardCheck,
+  ArrowDownRight,
+  ArrowUpRight,
+  Minus,
+  Check
 } from 'lucide-react';
 import { 
   SPECIES_LIST, 
   CULTURE_STAGES, 
   IMC_NURSERY_REFERENCE, 
   IMC_REARING_PERIODS, 
-  IMC_GROWOUT_PHASES 
+  IMC_GROWOUT_PHASES,
+  VANNAMEI_FEEDING_SCHEDULE,
+  FEEDING_TRAY_OBSERVATIONS,
+  VANNAMEI_CRITICAL_CONDITIONS,
+  FRESHWATER_PRAWN_STAGES
 } from '../constants/speciesData';
 import { calculateFeed } from '../services/calculationService';
+import { calculateFeedDifference } from '../utils/calculations';
 import { formatDisplayNumber } from '../lib/ruleEngine';
 import { translations } from '../lib/translations';
 
@@ -61,6 +73,18 @@ export default function FeedCalculator({
   const [cultureMonth, setCultureMonth] = useState('1');
   const [manualRate, setManualRate] = useState('');
 
+  // Feature 1 (Vannamei) & Feature 2 (Freshwater Prawn) Inputs
+  const [cultureAge, setCultureAge] = useState('30');
+  const [feedType, setFeedType] = useState('pellet');
+  const [trayObservation, setTrayObservation] = useState('none');
+  const [criticalConditions, setCriticalConditions] = useState([]);
+
+  // Feature 3: Feed Accountability State
+  const [confirmedFeed, setConfirmedFeed] = useState('');
+  const [isConfirmedManuallySet, setIsConfirmedManuallySet] = useState(false);
+  const [actualFeed, setActualFeed] = useState('');
+  const [differenceReason, setDifferenceReason] = useState('');
+
   // UI state
   const [isSaved, setIsSaved] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -86,6 +110,8 @@ export default function FeedCalculator({
   const isMagur = currentSpeciesObj.id === 'magur';
   const isGrassCarp = currentSpeciesObj.id === 'grass_carp';
   const isCustomSpecies = currentSpeciesObj.id === 'custom';
+  const isVannamei = currentSpeciesObj.id === 'vannamei';
+  const isFreshwaterPrawn = currentSpeciesObj.id === 'freshwater_prawn';
 
   // Handle Pond Selection
   const handlePondSelect = (pondId) => {
@@ -116,11 +142,28 @@ export default function FeedCalculator({
   const handleSpeciesChange = (newSpeciesId) => {
     setSelectedSpeciesId(newSpeciesId);
     setIsSaved(false);
+    setIsConfirmedManuallySet(false);
+    setConfirmedFeed('');
+    setActualFeed('');
+    setDifferenceReason('');
+    setTrayObservation('none');
+    setCriticalConditions([]);
 
     const newObj = SPECIES_LIST.find((s) => s.id === newSpeciesId);
-    if (!newObj?.isCustom && newObj?.id !== 'magur' && newObj?.id !== 'grass_carp') {
+    if (newObj?.id === 'vannamei') {
+      setCultureStage('Grow-out');
+      setCultureAge('30');
+      setAverageWeight('3.1');
+      setFeedPrice('65');
+      setManualRate('');
+    } else if (newObj?.id === 'freshwater_prawn') {
+      setCultureStage('Grow-out');
+      setFeedType('pellet');
+      setAverageWeight('25');
+      setFeedPrice('55');
+      setManualRate('3.5');
+    } else if (!newObj?.isCustom && newObj?.id !== 'magur' && newObj?.id !== 'grass_carp') {
       if (cultureStage === 'Nursery' && newObj?.category === 'IMC') {
-        // Keep or set empty for nursery manual input
         setManualRate('');
       } else {
         setManualRate('');
@@ -134,6 +177,8 @@ export default function FeedCalculator({
   const handleStageChange = (newStage) => {
     setCultureStage(newStage);
     setIsSaved(false);
+    setIsConfirmedManuallySet(false);
+    setConfirmedFeed('');
     if (newStage === 'Nursery' && isIMC) {
       setAverageWeight('');
       setManualRate('');
@@ -143,9 +188,42 @@ export default function FeedCalculator({
     } else if (newStage === 'Grow-out' && isIMC) {
       setGrowoutPhase('initial');
       setManualRate('5.5');
+    } else if (isFreshwaterPrawn) {
+      if (newStage === 'Hatchery (Larvae)') {
+        setManualRate('');
+      } else if (newStage === 'Nursery (PL/Juveniles)') {
+        setManualRate('15');
+      } else if (newStage === 'Broodstock') {
+        setManualRate('2.0');
+      } else {
+        setManualRate('3.5');
+      }
     } else {
       setManualRate('');
     }
+  };
+
+  // Handle Vannamei Culture Age Change
+  const handleCultureAgeChange = (val) => {
+    setCultureAge(val);
+    const ageNum = Number(val);
+    if (!isNaN(ageNum) && ageNum >= 1 && ageNum <= 120) {
+      const scheduleItem = VANNAMEI_FEEDING_SCHEDULE.find((s) => ageNum >= s.min_day && ageNum <= s.max_day);
+      if (scheduleItem && !scheduleItem.is_range && scheduleItem.ref_weight) {
+        if (!averageWeight || averageWeight === '0.2' || averageWeight === '0.7' || averageWeight === '3.1' || averageWeight === '14.5') {
+          setAverageWeight(String(scheduleItem.ref_weight));
+        }
+      }
+    }
+  };
+
+  // Toggle Critical Condition
+  const toggleCriticalCondition = (conditionId) => {
+    setCriticalConditions((prev) => 
+      prev.includes(conditionId) 
+        ? prev.filter((id) => id !== conditionId)
+        : [...prev, conditionId]
+    );
   };
 
   // Real-time calculation hook
@@ -163,6 +241,10 @@ export default function FeedCalculator({
       cultureMonth: currentSpeciesObj.needsMonth ? cultureMonth : null,
       manualRate,
       rulesList,
+      cultureAge: isVannamei ? cultureAge : null,
+      feedType,
+      trayObservation,
+      criticalConditions,
     });
   }, [
     currentSpeciesObj,
@@ -178,7 +260,22 @@ export default function FeedCalculator({
     cultureMonth,
     manualRate,
     rulesList,
+    isVannamei,
+    cultureAge,
+    feedType,
+    trayObservation,
+    criticalConditions,
   ]);
+
+  // Keep Confirmed Feeding Quantity synchronized if farmer hasn't manually overridden it
+  useEffect(() => {
+    if (!isConfirmedManuallySet && calculationResult.isValid) {
+      const recommendedVal = calculationResult.proposedAdjustment?.proposedFeed !== undefined
+        ? calculationResult.proposedAdjustment.proposedFeed
+        : calculationResult.dailyFeed;
+      setConfirmedFeed(String(recommendedVal));
+    }
+  }, [calculationResult, isConfirmedManuallySet]);
 
   // Reset saved toast when inputs change
   useEffect(() => {
@@ -194,7 +291,38 @@ export default function FeedCalculator({
     feedPrice,
     cultureMonth,
     manualRate,
+    cultureAge,
+    trayObservation,
+    criticalConditions,
   ]);
+
+  // Live Feed Difference Calculation (Feature 3)
+  const feedAccountability = useMemo(() => {
+    const calculatedFeedKg = calculationResult.calculatedFeed || calculationResult.dailyFeed || 0;
+    const actualFeedKg = actualFeed !== '' && !isNaN(Number(actualFeed)) && Number(actualFeed) >= 0
+      ? Number(actualFeed)
+      : null;
+    const price = Number(feedPrice) || 0;
+
+    if (actualFeedKg === null) {
+      return {
+        hasActual: false,
+        actualFeedKg: null,
+        calculatedFeedKg,
+        differenceKg: null,
+        differencePercent: null,
+        actualFeedCost: null,
+      };
+    }
+
+    const diff = calculateFeedDifference(actualFeedKg, calculatedFeedKg, price);
+    return {
+      hasActual: true,
+      actualFeedKg,
+      calculatedFeedKg,
+      ...diff,
+    };
+  }, [calculationResult, actualFeed, feedPrice]);
 
   // Quick Preset Sample Loaders
   const loadRohuRearingPreset = () => {
@@ -207,6 +335,11 @@ export default function FeedCalculator({
     setAverageWeight('50');
     setFeedPrice('40');
     setManualRate('7');
+    setTrayObservation('none');
+    setCriticalConditions([]);
+    setIsConfirmedManuallySet(false);
+    setConfirmedFeed('');
+    setActualFeed('');
   };
 
   const loadImcNurseryPreset = () => {
@@ -218,6 +351,45 @@ export default function FeedCalculator({
     setAverageWeight('');
     setFeedPrice('40');
     setManualRate('400'); // First 5 days (400%)
+    setTrayObservation('none');
+    setCriticalConditions([]);
+    setIsConfirmedManuallySet(false);
+    setConfirmedFeed('');
+    setActualFeed('');
+  };
+
+  const loadVannameiPreset = () => {
+    setSelectedPondId('');
+    setSelectedSpeciesId('vannamei');
+    setCultureStage('Grow-out');
+    setCultureAge('30');
+    setStocked('50000');
+    setSurvivalPercent('85');
+    setAverageWeight('3.1');
+    setFeedPrice('65');
+    setManualRate('');
+    setTrayObservation('consumed');
+    setCriticalConditions([]);
+    setIsConfirmedManuallySet(false);
+    setConfirmedFeed('');
+    setActualFeed('');
+  };
+
+  const loadFreshwaterPrawnPreset = () => {
+    setSelectedPondId('');
+    setSelectedSpeciesId('freshwater_prawn');
+    setCultureStage('Grow-out');
+    setStocked('10000');
+    setSurvivalPercent('80');
+    setAverageWeight('25');
+    setFeedPrice('55');
+    setManualRate('3.5');
+    setFeedType('pellet');
+    setTrayObservation('small_remaining');
+    setCriticalConditions([]);
+    setIsConfirmedManuallySet(false);
+    setConfirmedFeed('');
+    setActualFeed('');
   };
 
   const loadCustomPreset = () => {
@@ -229,6 +401,11 @@ export default function FeedCalculator({
     setAverageWeight('100');
     setFeedPrice('40');
     setManualRate('3');
+    setTrayObservation('none');
+    setCriticalConditions([]);
+    setIsConfirmedManuallySet(false);
+    setConfirmedFeed('');
+    setActualFeed('');
   };
 
   const handleReset = () => {
@@ -243,6 +420,14 @@ export default function FeedCalculator({
     setFeedPrice('40');
     setCultureMonth('1');
     setManualRate('');
+    setCultureAge('30');
+    setFeedType('pellet');
+    setTrayObservation('none');
+    setCriticalConditions([]);
+    setConfirmedFeed('');
+    setIsConfirmedManuallySet(false);
+    setActualFeed('');
+    setDifferenceReason('');
     setIsSaved(false);
   };
 
@@ -251,6 +436,27 @@ export default function FeedCalculator({
 
     const selectedPondObj = ponds.find((p) => String(p.id) === String(selectedPondId));
 
+    const calculatedFeedNum = calculationResult.calculatedFeed || calculationResult.dailyFeed || 0;
+    const finalConfirmedFeed = confirmedFeed !== '' && !isNaN(Number(confirmedFeed))
+      ? Number(confirmedFeed)
+      : (calculationResult.proposedAdjustment?.proposedFeed ?? calculationResult.dailyFeed);
+
+    const finalActualFeed = (actualFeed !== '' && !isNaN(Number(actualFeed)) && Number(actualFeed) >= 0)
+      ? Number(actualFeed)
+      : null;
+
+    const diffKg = finalActualFeed !== null
+      ? Number((finalActualFeed - calculatedFeedNum).toFixed(3))
+      : null;
+
+    const diffPercent = (finalActualFeed !== null && calculatedFeedNum > 0)
+      ? Number((((finalActualFeed - calculatedFeedNum) / calculatedFeedNum) * 100).toFixed(2))
+      : null;
+
+    const actualCost = finalActualFeed !== null
+      ? Number((finalActualFeed * (Number(feedPrice) || 0)).toFixed(2))
+      : null;
+
     setIsSaving(true);
     try {
       await onSaveRecord({
@@ -258,6 +464,10 @@ export default function FeedCalculator({
         scientific_name: currentSpeciesObj.scientific_name,
         culture_stage: cultureStage,
         culture_month: currentSpeciesObj.needsMonth ? Number(cultureMonth) : null,
+        culture_age_days: isVannamei ? Number(cultureAge) : null,
+        feed_type: isFreshwaterPrawn ? feedType : 'pellet',
+        tray_observation: trayObservation,
+        critical_conditions: criticalConditions,
         stocked: Number(stocked),
         survival_percent: Number(survivalPercent),
         average_weight: Number(averageWeight || 0),
@@ -276,14 +486,28 @@ export default function FeedCalculator({
         rule_id: calculationResult.selectedRule?.id || null,
         pond_id: selectedPondId || null,
         pond_name: selectedPondObj ? selectedPondObj.name : '',
+
+        // Feature 3: Feed accountability fields
+        calculated_feed: calculatedFeedNum,
+        confirmed_feed: finalConfirmedFeed,
+        actual_feed: finalActualFeed,
+        difference_kg: diffKg,
+        difference_percent: diffPercent,
+        actual_feed_cost: actualCost,
+        difference_reason: differenceReason || '',
       });
       setIsSaved(true);
       setSavedModalInfo({
         pondName: selectedPondObj ? selectedPondObj.name : currentSpeciesObj.name,
-        dailyFeed: calculationResult.dailyFeed,
+        dailyFeed: finalConfirmedFeed,
+        calculatedFeed: calculatedFeedNum,
+        confirmedFeed: finalConfirmedFeed,
+        actualFeed: finalActualFeed,
+        differenceKg: diffKg,
+        differencePercent: diffPercent,
         morningFeed: calculationResult.morningFeed,
         eveningFeed: calculationResult.eveningFeed,
-        dailyCost: calculationResult.dailyFeedCost,
+        dailyCost: actualCost ?? calculationResult.dailyFeedCost,
         species: currentSpeciesObj.name,
       });
       setTimeout(() => setIsSaved(false), 4000);
@@ -355,23 +579,37 @@ export default function FeedCalculator({
           <button
             onClick={loadRohuRearingPreset}
             className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 transition-colors"
-            title="Load Section 28 Rohu Rearing Example (8,500 fish, 425kg biomass, 29.75kg feed)"
+            title="Rohu Rearing Example (8,500 fish, 425kg biomass, 29.75kg feed)"
           >
-            {lang === 'mr' ? 'रोहू रिअरिंग (Sec 28)' : 'Rohu (Sec 28)'}
+            {lang === 'mr' ? 'रोहू रिअरिंग' : 'Rohu'}
           </button>
           <button
             onClick={loadImcNurseryPreset}
             className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200 transition-colors"
-            title="Load Section 2 IMC Nursery Example (1.2M spawn, 1.8kg initial biomass, 7.2kg feed)"
+            title="IMC Nursery Example (1.2M spawn, 1.8kg initial biomass, 7.2kg feed)"
           >
-            {lang === 'mr' ? 'नर्सरी (Sec 2)' : 'Nursery (Sec 2)'}
+            {lang === 'mr' ? 'नर्सरी' : 'Nursery'}
+          </button>
+          <button
+            onClick={loadVannameiPreset}
+            className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-orange-50 hover:bg-orange-100 text-orange-900 border border-orange-200 transition-colors"
+            title="Vannamei Shrimp Example (Day 30, 3.1g, 5% reference rate)"
+          >
+            {lang === 'mr' ? 'व्हॅनामेई' : 'Vannamei'}
+          </button>
+          <button
+            onClick={loadFreshwaterPrawnPreset}
+            className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-200 transition-colors"
+            title="Giant Freshwater Prawn Example (Grow-out, 25g, 3.5% confirmed rate)"
+          >
+            {lang === 'mr' ? 'महा-कोळंबी' : 'Prawn (FAO)'}
           </button>
           <button
             onClick={loadCustomPreset}
             className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 transition-colors"
-            title="Load Section 29 Custom Species Example (3% manual rate)"
+            title="Custom Species Example (3% manual rate)"
           >
-            {lang === 'mr' ? 'इतर/सानुकूल (Sec 29)' : 'Custom (Sec 29)'}
+            {lang === 'mr' ? 'इतर/सानुकूल' : 'Custom'}
           </button>
         </div>
       </div>
@@ -426,14 +664,14 @@ export default function FeedCalculator({
                   </option>
                   {ponds.map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.name} ({p.species || 'Fish'} • {formatDisplayNumber(p.stocking_count, 0)} {lang === 'mr' ? 'मासे' : 'fish'} • {p.average_weight_g || 0}g)
+                      {p.name} ({p.species || 'Fish'} • {formatDisplayNumber(p.stocking_count, 0)} {lang === 'mr' ? 'नग' : 'count'} • {p.average_weight_g || 0}g)
                     </option>
                   ))}
                 </select>
               </div>
             )}
 
-            {/* 1. Fish Species Dropdown */}
+            {/* 1. Species Dropdown */}
             <div>
               <label htmlFor="speciesSelect" className="block text-xs sm:text-sm font-bold text-slate-800 mb-1.5">
                 {t.calculator.speciesLabel} <span className="text-red-500">*</span>
@@ -456,7 +694,7 @@ export default function FeedCalculator({
               </div>
               {currentSpeciesObj.scientific_name && (
                 <p className="text-[11px] text-teal-800/80 font-medium italic mt-1 ml-0.5">
-                  {currentSpeciesObj.scientific_name}
+                  {currentSpeciesObj.scientific_name} • {currentSpeciesObj.category || 'Finfish'}
                 </p>
               )}
             </div>
@@ -473,17 +711,121 @@ export default function FeedCalculator({
                 onChange={(e) => handleStageChange(e.target.value)}
                 className="w-full h-12 px-3.5 pr-8 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 font-semibold text-sm sm:text-base focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-all cursor-pointer shadow-xs"
               >
-                {CULTURE_STAGES.map((st) => (
-                  <option key={st.id} value={st.id}>
-                    {lang === 'mr' ? st.name_mr : st.name}
-                  </option>
-                ))}
+                {isFreshwaterPrawn ? (
+                  FRESHWATER_PRAWN_STAGES.map((st) => (
+                    <option key={st.id} value={st.id}>
+                      {lang === 'mr' ? st.name_mr : st.name}
+                    </option>
+                  ))
+                ) : (
+                  CULTURE_STAGES.map((st) => (
+                    <option key={st.id} value={st.id}>
+                      {lang === 'mr' ? st.name_mr : st.name}
+                    </option>
+                  ))
+                )}
               </select>
             </div>
 
-            {/* SPECIFIC SUB-STAGE / PERIOD CONTROLS */}
+            {/* FRESHWATER PRAWN FEED TYPE SELECTOR (Broodstock / Prawn) */}
+            {isFreshwaterPrawn && (
+              <div className="p-3.5 bg-sky-50/70 border border-sky-200 rounded-2xl space-y-2 animate-fadeIn">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold text-sky-950">
+                    {lang === 'mr' ? 'खाद्य प्रकार (Feed Type)' : 'Feed Type'}
+                  </label>
+                  <span className="text-[10px] text-sky-700 bg-white px-2 py-0.5 rounded-full border border-sky-200 font-semibold">
+                    FAO FTP 428
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setFeedType('pellet')}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                      feedType === 'pellet'
+                        ? 'bg-sky-600 text-white border-sky-700 shadow-xs'
+                        : 'bg-white text-slate-800 border-sky-200 hover:bg-sky-100/60'
+                    }`}
+                  >
+                    {lang === 'mr' ? 'गोळी खाद्य (Pellet Feed)' : 'Pellet Feed (Dry)'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFeedType('fresh')}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                      feedType === 'fresh'
+                        ? 'bg-sky-600 text-white border-sky-700 shadow-xs'
+                        : 'bg-white text-slate-800 border-sky-200 hover:bg-sky-100/60'
+                    }`}
+                  >
+                    {lang === 'mr' ? 'ताजे खाद्य (Fresh / Trash Fish)' : 'Fresh Feed (Molluscs/Fish)'}
+                  </button>
+                </div>
+                {feedType === 'fresh' && (
+                  <p className="text-[11px] text-sky-800 font-medium">
+                    {lang === 'mr'
+                      ? '⚠️ टीप: ताज्या खाद्यात ७०–८०% पाणी असते; त्याचे वजन सुक्या गोळी खाद्यासारखे नसते.'
+                      : '⚠️ Note: Fresh feed contains 70–80% moisture; do not assume fresh-feed weight is equivalent to dry pellet weight.'}
+                  </p>
+                )}
+              </div>
+            )}
 
-            {/* IMC REARING PERIOD SELECTOR (Section 3) */}
+            {/* VANNAMEI CULTURE AGE IN DAYS (Culture days 1–120) */}
+            {isVannamei && (
+              <div className="p-3.5 bg-orange-50/70 border border-orange-200 rounded-2xl space-y-2 animate-fadeIn">
+                <div className="flex items-center justify-between">
+                  <label htmlFor="cultureAgeInput" className="block text-xs font-bold text-orange-950 flex items-center gap-1.5">
+                    <Calendar className="w-4 h-4 text-orange-600" />
+                    <span>{lang === 'mr' ? 'संवर्धन दिवस (Culture Days 1–120)' : 'Culture Age in Days (1–120)'} <span className="text-red-500">*</span></span>
+                  </label>
+                  <span className="text-[11px] font-bold text-orange-800 bg-white px-2 py-0.5 rounded-md border border-orange-200">
+                    {lang === 'mr' ? 'संदर्भ वेळापत्रक' : 'Reference Schedule'}
+                  </span>
+                </div>
+                <div className="relative">
+                  <input
+                    id="cultureAgeInput"
+                    name="cultureAgeInput"
+                    type="number"
+                    min="1"
+                    max="120"
+                    value={cultureAge}
+                    onChange={(e) => handleCultureAgeChange(e.target.value)}
+                    placeholder="e.g. 30"
+                    className="w-full h-11 px-3.5 rounded-xl bg-white border border-orange-300 text-slate-900 font-bold text-base focus:outline-none focus:ring-2 focus:ring-orange-500 shadow-xs"
+                  />
+                  <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-orange-700 pointer-events-none">
+                    {lang === 'mr' ? 'दिवस' : 'days'}
+                  </span>
+                </div>
+                {/* Age quick chips */}
+                <div className="flex items-center gap-1.5 pt-1 flex-wrap">
+                  {['5', '14', '28', '35', '49', '63', '84', '105', '120'].map((val) => (
+                    <button
+                      key={val}
+                      type="button"
+                      onClick={() => handleCultureAgeChange(val)}
+                      className={`px-2 py-0.5 rounded-md text-[11px] font-bold border transition-all cursor-pointer ${
+                        String(cultureAge) === val
+                          ? 'bg-orange-600 text-white border-orange-700 shadow-xs'
+                          : 'bg-white text-orange-900 border-orange-200 hover:bg-orange-100'
+                      }`}
+                    >
+                      D{val}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[11px] text-orange-900 leading-snug">
+                  {lang === 'mr'
+                    ? '१–७ दिवसांसाठी संदर्भ दर ६०–३५% आहे. १२० दिवसांपेक्षा जास्त वय असल्यास संदर्भ दर उपलब्ध नसतो.'
+                    : 'Days 1–7 reference rate is 60–35% body weight/day. Beyond 120 days, reference rate is unavailable.'}
+                </p>
+              </div>
+            )}
+
+            {/* SPECIFIC SUB-STAGE / PERIOD CONTROLS (IMC Rearing & Growout) */}
             {isIMCRearing && (
               <div className="p-3.5 bg-sky-50/80 border border-sky-200 rounded-2xl space-y-2 animate-fadeIn">
                 <div className="flex items-center justify-between">
@@ -522,16 +864,9 @@ export default function FeedCalculator({
                     </button>
                   ))}
                 </div>
-
-                <p className="text-[11px] text-sky-800 leading-snug">
-                  {lang === 'mr' 
-                    ? '⚠️ संदर्भ खाद्य श्रेणी: दर्शविलेला दर संदर्भासाठी आहे. प्रत्यक्ष खाद्य माशांची वाढ व पाण्याच्या गुणवत्तेनुसार निवडा.'
-                    : '⚠️ Reference feeding range: Adjust rate according to fish growth, water quality, and appetite.'}
-                </p>
               </div>
             )}
 
-            {/* IMC GROW-OUT PHASE SELECTOR (Section 4) */}
             {isIMCGrowout && (
               <div className="p-3.5 bg-emerald-50/80 border border-emerald-200 rounded-2xl space-y-2 animate-fadeIn">
                 <div className="flex items-center justify-between">
@@ -570,16 +905,10 @@ export default function FeedCalculator({
                     </button>
                   ))}
                 </div>
-
-                <p className="text-[11px] text-emerald-800 leading-snug">
-                  {lang === 'mr' 
-                    ? '⚠️ संदर्भ खाद्य श्रेणी: दर्शविलेला दर संदर्भासाठी सुरुवातीची श्रेणी आहे. खाद्य प्रतिसाद तपासा.'
-                    : '⚠️ Reference feeding range: Monitor feeding response and adjust according to culture conditions.'}
-                </p>
               </div>
             )}
 
-            {/* PANGASIUS CULTURE PERIOD / MONTH (Section 7) */}
+            {/* PANGASIUS CULTURE PERIOD / MONTH */}
             {currentSpeciesObj.needsMonth && (
               <div className="p-3.5 bg-sky-50/70 border border-sky-200 rounded-2xl space-y-1.5 animate-fadeIn">
                 <label className="block text-xs sm:text-sm font-bold text-sky-950 flex items-center gap-1.5">
@@ -606,17 +935,18 @@ export default function FeedCalculator({
                     </button>
                   ))}
                 </div>
-                <p className="text-[11px] text-sky-700 font-medium">
-                  {t.calculator.cultureMonthHelp}
-                </p>
               </div>
             )}
 
-            {/* 3. Number Stocked (Or Initial Spawn for IMC Nursery) */}
+            {/* 3. Number Stocked */}
             <div>
               <label htmlFor="stockedInput" className="block text-xs sm:text-sm font-bold text-slate-800 mb-1.5">
                 {isIMCNursery 
                   ? (t.calculator.nurserySpawnLabel || (lang === 'mr' ? 'साठवणूक केलेल्या स्पॉनची संख्या' : 'Number of Spawn Stocked'))
+                  : isVannamei
+                  ? (lang === 'mr' ? 'साठवणूक केलेली कोळंबी (PL Count)' : 'Number of Shrimp Stocked (PL Count)')
+                  : (cultureStage === 'Broodstock' && isFreshwaterPrawn)
+                  ? (lang === 'mr' ? 'ब्रूडस्टॉक कोळंबी संख्या' : 'Number of Broodstock Prawns')
                   : t.calculator.stockedLabel} <span className="text-red-500">*</span>
               </label>
               <div className="relative">
@@ -627,19 +957,24 @@ export default function FeedCalculator({
                   inputMode="numeric"
                   value={stocked}
                   onChange={(e) => setStocked(e.target.value)}
-                  placeholder={isIMCNursery ? '1200000' : t.calculator.stockedPlaceholder}
+                  placeholder={isIMCNursery ? '1200000' : isVannamei ? '50000' : t.calculator.stockedPlaceholder}
                   min="1"
                   step="1"
                   className="w-full h-12 px-3.5 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 font-bold text-base sm:text-lg focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-all shadow-xs"
                 />
                 <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 uppercase pointer-events-none">
-                  {isIMCNursery ? (lang === 'mr' ? 'स्पॉन' : 'spawn') : (lang === 'mr' ? 'नग' : 'fish')}
+                  {isIMCNursery ? (lang === 'mr' ? 'स्पॉन' : 'spawn') : isVannamei || isFreshwaterPrawn ? (lang === 'mr' ? 'कोळंबी' : 'prawn') : (lang === 'mr' ? 'नग' : 'fish')}
                 </span>
               </div>
 
               {/* Quick Stock Chips */}
               <div className="flex items-center gap-1.5 pt-1.5 flex-wrap">
-                {(isIMCNursery ? ['500000', '1000000', '1200000', '2000000'] : ['2000', '5000', '10000', '20000']).map((val) => (
+                {(isIMCNursery 
+                  ? ['500000', '1000000', '1200000', '2000000'] 
+                  : isVannamei 
+                  ? ['20000', '50000', '100000', '200000']
+                  : ['2000', '5000', '10000', '20000']
+                ).map((val) => (
                   <button
                     key={val}
                     type="button"
@@ -654,17 +989,10 @@ export default function FeedCalculator({
                   </button>
                 ))}
               </div>
-
-              <p className="text-[11px] text-slate-500 mt-1 ml-0.5">
-                {isIMCNursery 
-                  ? (lang === 'mr' ? 'सुरुवातीचा बायोमास: १० लाख स्पॉन = १.५ किलो (प्रकल्प गृहीतक)' : 'Initial biomass calculation: 1 million spawn = 1.5 kg (project assumption)')
-                  : t.calculator.stockedHelp}
-              </p>
             </div>
 
             {/* 4. Survival % & 5. Average Weight (2-col grid) */}
             {isIMCNursery ? (
-              /* IMC Nursery: Average spawn weight is practically difficult to measure; NOT required! (Section 2 & 13) */
               <div className="p-3.5 bg-amber-50/70 border border-amber-300/80 rounded-2xl space-y-1.5 animate-fadeIn">
                 <div className="flex items-center gap-2">
                   <Info className="w-4 h-4 text-amber-700 shrink-0" />
@@ -675,7 +1003,7 @@ export default function FeedCalculator({
                 <p className="text-xs text-amber-900 leading-relaxed">
                   {lang === 'mr' 
                     ? 'स्पॉन अत्यंत लहान असल्याने नर्सरी टप्प्यावर सरासरी वजन मोजणे कठीण असते. Fishry यासाठी सरासरी वजन विचारत नाही.'
-                    : 'Spawn are extremely small; accurate average spawn weight is difficult/inconvenient to measure. Average weight input is not required for this stage.'}
+                    : 'Spawn are extremely small; accurate average spawn weight is difficult to measure. Average weight input is not required.'}
                 </p>
                 <div className="pt-1 text-[11px] text-amber-950 font-semibold border-t border-amber-200">
                   <span>{lang === 'mr' ? 'प्रकल्प गृहीतक:' : 'Project Assumption:'} </span>
@@ -725,10 +1053,12 @@ export default function FeedCalculator({
                   </div>
                 </div>
 
-                {/* Average Fish Weight (g) */}
+                {/* Average Fish/Shrimp Weight (g) */}
                 <div>
                   <label htmlFor="averageWeightInput" className="block text-xs sm:text-sm font-bold text-slate-800 mb-1.5">
-                    {t.calculator.weightLabel} <span className="text-red-500">*</span>
+                    {isVannamei || isFreshwaterPrawn 
+                      ? (lang === 'mr' ? 'सरासरी वजन (ग्रॅम)' : 'Average Shrimp/Prawn Weight (g)') 
+                      : t.calculator.weightLabel} <span className="text-red-500">*</span>
                   </label>
                   <div className="relative">
                     <input
@@ -738,8 +1068,8 @@ export default function FeedCalculator({
                       inputMode="decimal"
                       value={averageWeight}
                       onChange={(e) => setAverageWeight(e.target.value)}
-                      placeholder={t.calculator.weightPlaceholder}
-                      min="0.1"
+                      placeholder={isVannamei ? '3.1' : t.calculator.weightPlaceholder}
+                      min="0.01"
                       step="0.1"
                       className="w-full h-12 px-3.5 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 font-bold text-base sm:text-lg focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-all shadow-xs"
                     />
@@ -748,7 +1078,10 @@ export default function FeedCalculator({
                     </span>
                   </div>
                   <div className="flex items-center gap-1.5 pt-1.5 flex-wrap">
-                    {['10', '25', '50', '100', '250', '500'].map((val) => (
+                    {(isVannamei 
+                      ? ['0.4', '1.2', '3.1', '7.5', '14.5', '25.0'] 
+                      : ['10', '25', '50', '100', '250', '500']
+                    ).map((val) => (
                       <button
                         key={val}
                         type="button"
@@ -793,7 +1126,7 @@ export default function FeedCalculator({
                 </span>
               </div>
               <div className="flex items-center gap-1.5 pt-1.5 flex-wrap">
-                {['35', '40', '42.5', '45', '50'].map((val) => (
+                {['40', '45', '55', '65', '75', '85'].map((val) => (
                   <button
                     key={val}
                     type="button"
@@ -810,9 +1143,150 @@ export default function FeedCalculator({
               </div>
             </div>
 
-            {/* FEEDING RATE UI SECTION */}
+            {/* SPECIES-SPECIFIC FEEDING RATE SECTIONS */}
 
-            {/* A. IMC NURSERY MANUAL RATE SELECTION (Section 2) */}
+            {/* VANNAMEI DAYS 1–7 CONFIRMATION / RATE SELECTION */}
+            {isVannamei && Number(cultureAge) >= 1 && Number(cultureAge) <= 7 && (
+              <div className="p-4 bg-orange-50 border-2 border-orange-400 rounded-2xl space-y-3 animate-fadeIn">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-orange-500 animate-ping" />
+                    <span className="text-xs font-black text-orange-950 uppercase tracking-wider">
+                      {lang === 'mr' ? 'व्हॅनामेई दिवस १–७ संदर्भ श्रेणी' : 'VANNAMEI DAYS 1–7 REFERENCE RANGE'}
+                    </span>
+                  </div>
+                  {renderFeedingModeBadge('MANUAL')}
+                </div>
+
+                <div className="text-xs text-orange-950 bg-white/90 p-3 rounded-xl border border-orange-200 space-y-1">
+                  <span className="font-bold block text-orange-900">
+                    ⚠️ {lang === 'mr' ? 'संदर्भ दर: ६०–३५% बायोमास/दिवस' : 'Reference Rate: 60–35% Body Weight/Day'}
+                  </span>
+                  <p className="leading-relaxed text-[11px] text-orange-900/90">
+                    {lang === 'mr' 
+                      ? 'पहिल्या आठवड्यासाठी ६०–३५% अशी संदर्भ श्रेणी आहे. कोणताही मनमानी स्थिर दर लागू न करता, या संदर्भातील दर निश्चित करा किंवा स्वतः भरा.'
+                      : 'The first week uses a 60–35% body weight/day reference range. Do not assume an arbitrary fixed rate; select or enter your confirmed rate.'}
+                  </p>
+                </div>
+
+                <div>
+                  <label htmlFor="manualRateInput" className="block text-xs font-extrabold text-orange-950 mb-1">
+                    {lang === 'mr' ? 'निश्चित केलेला खाद्य दर (%)' : 'Confirmed Feeding Rate (%)'} <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      id="manualRateInput"
+                      name="manualRateInput"
+                      type="number"
+                      inputMode="decimal"
+                      value={manualRate}
+                      onChange={(e) => setManualRate(e.target.value)}
+                      placeholder="e.g. 45"
+                      min="1"
+                      step="1"
+                      className="w-full h-12 px-3.5 rounded-xl bg-white border-2 border-orange-400 text-orange-950 font-black text-lg focus:outline-none focus:ring-2 focus:ring-orange-500 shadow-xs"
+                    />
+                    <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-base font-extrabold text-orange-700 pointer-events-none">
+                      %
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5 pt-1.5">
+                    <span className="text-[11px] text-orange-800 font-semibold">{lang === 'mr' ? 'त्वरित श्रेणी:' : 'Range presets:'}</span>
+                    {['60', '50', '40', '35'].map((val) => (
+                      <button
+                        key={val}
+                        type="button"
+                        onClick={() => setManualRate(val)}
+                        className={`px-2 py-0.5 rounded-md text-[11px] font-bold border transition-all cursor-pointer ${
+                          manualRate === val ? 'bg-orange-600 text-white border-orange-700' : 'bg-white text-orange-900 border-orange-300'
+                        }`}
+                      >
+                        {val}%
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* FRESHWATER PRAWN FAO MANUAL RATE SELECTION */}
+            {isFreshwaterPrawn && (
+              <div className="p-4 bg-emerald-50 border-2 border-emerald-400 rounded-2xl space-y-3 animate-fadeIn">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
+                    <span className="text-xs font-black text-emerald-950 uppercase tracking-wider">
+                      {lang === 'mr' ? 'FAO महा-कोळंबी खाद्य दर' : 'FAO PRAWN FEEDING RATE'}
+                    </span>
+                  </div>
+                  {renderFeedingModeBadge('MANUAL')}
+                </div>
+
+                <div className="text-xs text-emerald-950 bg-white/90 p-3 rounded-xl border border-emerald-200 space-y-1">
+                  <span className="font-bold block text-emerald-900">
+                    📘 {cultureStage === 'Nursery (PL/Juveniles)' 
+                      ? (lang === 'mr' ? 'नर्सरी संदर्भ: १०–२०% बायोमास/दिवस' : 'Nursery Reference: 10–20% Biomass/Day')
+                      : cultureStage === 'Broodstock'
+                      ? (lang === 'mr' ? 'ब्रूडस्टॉक संदर्भ: १–३% बायोमास/दिवस' : 'Broodstock Reference: 1–3% Biomass/Day')
+                      : (lang === 'mr' ? 'ग्रो-आऊट संदर्भ: आकारावर आधारित (~१०-२०% लहान; ~२% काढणीजवळ)' : 'Grow-out Reference: Size-based (~10-20% small; ~2% near harvest)')
+                    }
+                  </span>
+                  <p className="leading-relaxed text-[11px] text-emerald-900/90">
+                    {lang === 'mr'
+                      ? 'FAO मार्गदर्शिकेनुसार कोणताही सार्वत्रिक स्थिर दर गृहीत न धरता, स्थानिक प्रमाणित पद्धत व खाण्याच्या प्रतिसादानुसार दर निश्चित करा.'
+                      : 'Following the FAO manual, confirm a feeding rate using a locally verified protocol and observed feeding response.'}
+                  </p>
+                </div>
+
+                {cultureStage !== 'Hatchery (Larvae)' && (
+                  <div>
+                    <label htmlFor="manualRateInput" className="block text-xs font-extrabold text-emerald-950 mb-1">
+                      {lang === 'mr' ? 'निश्चित केलेला खाद्य दर (%)' : 'Confirmed Feeding Rate (%)'} <span className="text-red-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        id="manualRateInput"
+                        name="manualRateInput"
+                        type="number"
+                        inputMode="decimal"
+                        value={manualRate}
+                        onChange={(e) => setManualRate(e.target.value)}
+                        placeholder="e.g. 3.5"
+                        min="0.1"
+                        step="0.1"
+                        className="w-full h-12 px-3.5 rounded-xl bg-white border-2 border-emerald-400 text-emerald-950 font-black text-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-xs"
+                      />
+                      <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-base font-extrabold text-emerald-700 pointer-events-none">
+                        %
+                      </span>
+                    </div>
+                    {/* Quick Suggestions for Prawn */}
+                    <div className="flex items-center gap-1.5 pt-1.5 flex-wrap">
+                      <span className="text-[11px] text-emerald-800 font-semibold">{lang === 'mr' ? 'संदर्भ दर:' : 'Presets:'}</span>
+                      {(cultureStage === 'Broodstock' 
+                        ? ['1.0', '1.5', '2.0', '2.5', '3.0']
+                        : cultureStage === 'Nursery (PL/Juveniles)'
+                        ? ['10.0', '12.0', '15.0', '18.0', '20.0']
+                        : ['2.0', '3.0', '3.5', '5.0', '8.0', '12.0']
+                      ).map((val) => (
+                        <button
+                          key={val}
+                          type="button"
+                          onClick={() => setManualRate(val)}
+                          className={`px-2 py-0.5 rounded-md text-[11px] font-bold border transition-all cursor-pointer ${
+                            manualRate === val ? 'bg-emerald-600 text-white border-emerald-700' : 'bg-white text-emerald-900 border-emerald-300'
+                          }`}
+                        >
+                          {val}%
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* IMC NURSERY MANUAL RATE SELECTION */}
             {isIMCNursery && (
               <div className="p-4 bg-gradient-to-br from-amber-50 to-orange-50/50 border-2 border-amber-400 rounded-2xl space-y-3 animate-fadeIn">
                 <div className="flex items-center justify-between">
@@ -825,7 +1299,6 @@ export default function FeedCalculator({
                   {renderFeedingModeBadge('MANUAL')}
                 </div>
 
-                {/* Reference Nursery Basis Display */}
                 <div className="bg-white/80 border border-amber-200 rounded-xl p-3 space-y-1.5 text-xs text-amber-950">
                   <span className="font-extrabold text-amber-900 block flex items-center gap-1">
                     <BookOpen className="w-3.5 h-3.5 text-amber-700" />
@@ -835,48 +1308,14 @@ export default function FeedCalculator({
                     <div className="bg-amber-100/60 p-2 rounded-lg">
                       <span className="block text-[11px] text-amber-800">{lang === 'mr' ? 'पहिले ५ दिवस:' : 'First 5 days:'}</span>
                       <span className="font-bold text-sm text-amber-950">400%</span>
-                      <span className="block text-[10px] text-amber-700">{lang === 'mr' ? 'सुरुवातीच्या बायोमासच्या' : 'of initial biomass'}</span>
                     </div>
                     <div className="bg-amber-100/60 p-2 rounded-lg">
                       <span className="block text-[11px] text-amber-800">{lang === 'mr' ? '५ दिवसांनंतर:' : 'After first 5 days:'}</span>
                       <span className="font-bold text-sm text-amber-950">800%</span>
-                      <span className="block text-[10px] text-amber-700">{lang === 'mr' ? 'सुरुवातीच्या बायोमासच्या' : 'of initial biomass'}</span>
                     </div>
                   </div>
                 </div>
 
-                {/* Quick Selection Chips for Reference Rates */}
-                <div>
-                  <span className="block text-[11px] font-bold text-amber-900 mb-1.5">
-                    {lang === 'mr' ? 'त्वरित संदर्भ दर निवडा किंवा खाली स्वतः भरा:' : 'Quick reference selection or enter manual rate below:'}
-                  </span>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setManualRate('400')}
-                      className={`py-2 px-2.5 rounded-xl font-bold text-xs border transition-all cursor-pointer ${
-                        manualRate === '400'
-                          ? 'bg-amber-600 text-white border-amber-700 shadow-sm'
-                          : 'bg-white hover:bg-amber-100/80 text-amber-900 border-amber-300'
-                      }`}
-                    >
-                      {t.calculator.nurseryQuick400 || (lang === 'mr' ? 'पहिले ५ दिवस (४००%)' : 'First 5 days (400%)')}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setManualRate('800')}
-                      className={`py-2 px-2.5 rounded-xl font-bold text-xs border transition-all cursor-pointer ${
-                        manualRate === '800'
-                          ? 'bg-amber-600 text-white border-amber-700 shadow-sm'
-                          : 'bg-white hover:bg-amber-100/80 text-amber-900 border-amber-300'
-                      }`}
-                    >
-                      {t.calculator.nurseryQuick800 || (lang === 'mr' ? '५ दिवसांनंतर (८००%)' : 'After 5 days (800%)')}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Manual Rate Input */}
                 <div>
                   <label htmlFor="manualRateInput" className="block text-xs font-extrabold text-amber-950 mb-1">
                     {lang === 'mr' ? 'निवडलेला / स्वतः भरलेला खाद्य दर (%)' : 'Selected / Manual Feeding Rate (%)'} <span className="text-red-500">*</span>
@@ -898,24 +1337,35 @@ export default function FeedCalculator({
                       %
                     </span>
                   </div>
-                </div>
-
-                {/* Section 2 Contextual Warning */}
-                <div className="p-3 bg-amber-100/80 border border-amber-300 rounded-xl space-y-1 text-xs text-amber-950">
-                  <div className="flex items-center gap-1.5 font-bold text-amber-900">
-                    <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0" />
-                    <span>{t.calculator.imcNurseryWarningTitle || (lang === 'mr' ? 'मॅन्युअल खाद्य दर आवश्यक' : 'Manual Feeding Selection Required')}</span>
+                  <div className="grid grid-cols-2 gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setManualRate('400')}
+                      className={`py-2 px-2.5 rounded-xl font-bold text-xs border transition-all cursor-pointer ${
+                        manualRate === '400'
+                          ? 'bg-amber-600 text-white border-amber-700 shadow-sm'
+                          : 'bg-white hover:bg-amber-100/80 text-amber-900 border-amber-300'
+                      }`}
+                    >
+                      {lang === 'mr' ? 'पहिले ५ दिवस (४००%)' : 'First 5 days (400%)'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setManualRate('800')}
+                      className={`py-2 px-2.5 rounded-xl font-bold text-xs border transition-all cursor-pointer ${
+                        manualRate === '800'
+                          ? 'bg-amber-600 text-white border-amber-700 shadow-sm'
+                          : 'bg-white hover:bg-amber-100/80 text-amber-900 border-amber-300'
+                      }`}
+                    >
+                      {lang === 'mr' ? '५ दिवसांनंतर (८००%)' : 'After 5 days (800%)'}
+                    </button>
                   </div>
-                  <p className="leading-relaxed text-[11px] text-amber-900/90">
-                    {lang === 'mr'
-                      ? 'स्पॉनचे सरासरी वजन अचूक मोजणे कठीण असल्याने प्रमाणित पद्धत वापरा आणि खाद्य प्रतिसाद व परिस्थितीनुसार दर समायोजित करा.'
-                      : 'Spawn average weight is difficult to measure accurately at this stage. Use a verified feeding protocol and adjust according to feeding response and culture conditions.'}
-                  </p>
                 </div>
               </div>
             )}
 
-            {/* B. MAGUR MANUAL RATE UI (Section 8) */}
+            {/* MAGUR MANUAL RATE UI */}
             {isMagur && (
               <div className="p-4 bg-amber-50 border-2 border-amber-400 rounded-2xl space-y-3 animate-fadeIn">
                 <div className="flex items-center justify-between">
@@ -927,18 +1377,6 @@ export default function FeedCalculator({
                   </div>
                   {renderFeedingModeBadge('MANUAL')}
                 </div>
-
-                <div className="text-xs text-amber-950 bg-white/80 p-3 rounded-xl border border-amber-200 space-y-1">
-                  <span className="font-bold block text-amber-900">
-                    ⚠️ {t.calculator.magurWarningTitle || 'MANUAL FEEDING REQUIRED'}
-                  </span>
-                  <p className="leading-relaxed text-[11px] text-amber-900/90">
-                    {lang === 'mr' 
-                      ? 'मागूरसाठी कोणताही सार्वत्रिक स्वयंचलित खाद्य दर लागू केलेला नाही. प्रमाणित संवर्धन/खाद्य पद्धतीनुसार स्वतः योग्य दर भरा.'
-                      : 'No universal automatic feeding rate is applied for Magur. Enter/select a feeding rate according to your verified culture/feed protocol.'}
-                  </p>
-                </div>
-
                 <div>
                   <label htmlFor="manualRateInput" className="block text-xs font-extrabold text-amber-950 mb-1">
                     {t.calculator.manualRateLabel} <span className="text-red-500">*</span>
@@ -960,50 +1398,22 @@ export default function FeedCalculator({
                       %
                     </span>
                   </div>
-                  {/* Quick Suggestions for Magur */}
-                  <div className="flex items-center gap-1.5 pt-1.5">
-                    <span className="text-[11px] text-amber-800 font-semibold">{lang === 'mr' ? 'उदा.' : 'e.g.'}:</span>
-                    {['3.0', '4.0', '5.0', '6.0'].map((val) => (
-                      <button
-                        key={val}
-                        type="button"
-                        onClick={() => setManualRate(val)}
-                        className={`px-2 py-0.5 rounded-md text-[11px] font-bold border transition-all cursor-pointer ${
-                          manualRate === val ? 'bg-amber-600 text-white border-amber-700' : 'bg-white text-amber-900 border-amber-300'
-                        }`}
-                      >
-                        {val}%
-                      </button>
-                    ))}
-                  </div>
                 </div>
               </div>
             )}
 
-            {/* C. GRASS CARP SPECIAL METHOD / MANUAL UI (Section 9) */}
+            {/* GRASS CARP SPECIAL METHOD / MANUAL UI */}
             {isGrassCarp && (
               <div className="p-4 bg-emerald-50 border-2 border-emerald-400 rounded-2xl space-y-3 animate-fadeIn">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <AlertTriangle className="w-4 h-4 text-emerald-700" />
                     <span className="text-xs font-black text-emerald-950 uppercase tracking-wider">
-                      {lang === 'mr' ? 'खाद्य मोड: विशेष / मॅन्युअल' : 'FEEDING MODE: MANUAL / SPECIAL METHOD'}
+                      {lang === 'mr' ? 'खाद्य मोड: विशेष / मॅन्युअल' : 'FEEDING MODE: MANUAL'}
                     </span>
                   </div>
                   {renderFeedingModeBadge('MANUAL')}
                 </div>
-
-                <div className="text-xs text-emerald-950 bg-white/80 p-3 rounded-xl border border-emerald-200 space-y-1">
-                  <span className="font-bold block text-emerald-900">
-                    ⚠️ {t.calculator.grassCarpWarningTitle || 'SPECIAL FEEDING METHOD'}
-                  </span>
-                  <p className="leading-relaxed text-[11px] text-emerald-900/90">
-                    {lang === 'mr'
-                      ? 'ग्रास कार्पचे खाद्य वनस्पती/चाऱ्याची उपलब्धता, माशांचा आकार व परिस्थितीवर अवलंबून असते. Fishry स्वयंचलित गोळी खाद्य दर लागू करत नाही.'
-                      : 'Grass Carp feeding depends on forage/vegetation availability, fish size, culture conditions and feeding response. Fishry does not apply a universal automatic pellet feeding rate.'}
-                  </p>
-                </div>
-
                 <div>
                   <label htmlFor="manualRateInput" className="block text-xs font-extrabold text-emerald-950 mb-1">
                     {lang === 'mr' ? 'पूरक गोळी खाद्य दर (%)' : 'Supplementary Pellet Feed Rate (%)'} <span className="text-red-500">*</span>
@@ -1025,26 +1435,11 @@ export default function FeedCalculator({
                       %
                     </span>
                   </div>
-                  <div className="flex items-center gap-1.5 pt-1.5">
-                    <span className="text-[11px] text-emerald-800 font-semibold">{lang === 'mr' ? 'उदा.' : 'e.g.'}:</span>
-                    {['1.5', '2.0', '2.5', '3.0'].map((val) => (
-                      <button
-                        key={val}
-                        type="button"
-                        onClick={() => setManualRate(val)}
-                        className={`px-2 py-0.5 rounded-md text-[11px] font-bold border transition-all cursor-pointer ${
-                          manualRate === val ? 'bg-emerald-600 text-white border-emerald-700' : 'bg-white text-emerald-900 border-emerald-300'
-                        }`}
-                      >
-                        {val}%
-                      </button>
-                    ))}
-                  </div>
                 </div>
               </div>
             )}
 
-            {/* D. OTHER / CUSTOM SPECIES MANUAL RATE (Section 10) */}
+            {/* OTHER / CUSTOM SPECIES MANUAL RATE */}
             {isCustomSpecies && (
               <div className="p-4 bg-amber-50 border-2 border-amber-400 rounded-2xl space-y-3 animate-fadeIn">
                 <div className="flex items-center justify-between">
@@ -1056,18 +1451,6 @@ export default function FeedCalculator({
                   </div>
                   {renderFeedingModeBadge('MANUAL')}
                 </div>
-
-                <div className="text-xs text-amber-950 bg-white/80 p-3 rounded-xl border border-amber-200 space-y-1">
-                  <span className="font-bold block text-amber-900">
-                    ⚠️ {t.calculator.customWarningTitle || 'MANUAL RATE REQUIRED'}
-                  </span>
-                  <p className="leading-relaxed text-[11px] text-amber-900/90">
-                    {lang === 'mr'
-                      ? 'या माशाच्या जातीसाठी Fishry कडे पूर्व-निर्धारित खाद्य नियम उपलब्ध नाही. प्रमाणित संवर्धन/खाद्य पद्धतीनुसार स्वतः दर भरा.'
-                      : 'Fishry does not have a predefined feeding rule for this species. Enter a feeding rate based on a verified culture/feed protocol.'}
-                  </p>
-                </div>
-
                 <div className="relative">
                   <input
                     id="manualRateInput"
@@ -1088,63 +1471,98 @@ export default function FeedCalculator({
               </div>
             )}
 
-            {/* E. IMC REARING & GROWOUT RATE ADJUSTMENT */}
-            {(isIMCRearing || isIMCGrowout) && (
-              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-bold text-slate-700">
-                    {lang === 'mr' ? 'खाद्य दर समायोजन (पर्यायी)' : 'Rate Selection / Adjustment (Optional)'}
-                  </span>
-                  <span className="font-semibold text-slate-500">
-                    {lang === 'mr' ? 'लागू श्रेणी:' : 'Range:'} {calculationResult.applicableRange?.min}–{calculationResult.applicableRange?.max}%
+            {/* FEEDING-TRAY MANAGEMENT OBSERVATION (Shared Choices) */}
+            <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+              <div className="flex items-center justify-between">
+                <label htmlFor="traySelect" className="block text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <ClipboardCheck className="w-4 h-4 text-teal-600" />
+                  <span>{t.feedTracking?.trayObservation || (lang === 'mr' ? 'खाद्य ट्रे निरीक्षण' : 'Feeding-Tray Observation')}</span>
+                </label>
+                <span className="text-[10px] text-slate-500 bg-white px-2 py-0.5 rounded-md border border-slate-200">
+                  {lang === 'mr' ? '५ पर्याय' : '5 Choices'}
+                </span>
+              </div>
+              <select
+                id="traySelect"
+                value={trayObservation}
+                onChange={(e) => setTrayObservation(e.target.value)}
+                className="w-full h-11 px-3.5 rounded-xl bg-white border border-slate-300 text-slate-900 font-semibold text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 shadow-xs cursor-pointer"
+              >
+                {FEEDING_TRAY_OBSERVATIONS.map((obs) => (
+                  <option key={obs.id} value={obs.id}>
+                    {lang === 'mr' ? obs.label_mr : obs.label}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[11px] text-slate-500 leading-snug">
+                {isVannamei 
+                  ? (lang === 'mr' 
+                      ? 'ट्रे निरीक्षणानुसार पुढील आहारासाठी समायोजन मार्गदर्शन दर्शवले जाईल.'
+                      : 'Observation provides proposed adjustment guidance for the next meal.')
+                  : isFreshwaterPrawn
+                  ? (lang === 'mr'
+                      ? 'FAO मार्गदर्शक: शिल्लक खाद्यानुसार सावधगिरी बाळगा. व्हॅनामेईची टक्केवारी येथे वापरू नका.'
+                      : 'FAO Guidance: Complete consumption justifies reviewing an increase, while leftovers justify reducing ration.')
+                  : (lang === 'mr'
+                      ? 'खाद्य वाया जाणे रोखण्यासाठी ट्रे निरीक्षणाची नोंद ठेवा.'
+                      : 'Log tray consumption to monitor appetite and prevent overfeeding.')
+                }
+              </p>
+            </div>
+
+            {/* VANNAMEI CRITICAL POND CONDITIONS (Section 6) */}
+            {isVannamei && (
+              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-2.5 animate-fadeIn">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <AlertTriangle className="w-4 h-4 text-amber-600" />
+                    <span>{lang === 'mr' ? 'तळ्यातील गंभीर परिस्थिती (Critical Conditions)' : 'Critical Pond Conditions'}</span>
+                  </label>
+                  <span className="text-[10px] font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
+                    {lang === 'mr' ? 'रूढीवादी प्राधान्य' : 'Conservative Priority'}
                   </span>
                 </div>
-                <div className="relative">
-                  <input
-                    type="number"
-                    inputMode="decimal"
-                    value={manualRate}
-                    onChange={(e) => setManualRate(e.target.value)}
-                    placeholder={`e.g. ${calculationResult.feedingRate || 5.0}`}
-                    min="0.1"
-                    step="0.1"
-                    className="w-full h-11 px-3.5 rounded-xl bg-white border border-slate-300 text-slate-900 font-bold text-base focus:outline-none focus:ring-2 focus:ring-teal-500 shadow-xs"
-                  />
-                  <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-sm font-extrabold text-slate-400 pointer-events-none">
-                    %
-                  </span>
-                </div>
-                {/* Range boundary chips */}
-                {calculationResult.applicableRange && (
-                  <div className="flex items-center gap-1.5 pt-1">
-                    <span className="text-[11px] text-slate-500 font-medium">{lang === 'mr' ? 'श्रेणी दर:' : 'Range presets:'}</span>
-                    {[
-                      calculationResult.applicableRange.min,
-                      Number(((calculationResult.applicableRange.min + calculationResult.applicableRange.max) / 2).toFixed(1)),
-                      calculationResult.applicableRange.max,
-                    ].map((val) => (
-                      <button
-                        key={val}
-                        type="button"
-                        onClick={() => setManualRate(String(val))}
-                        className={`px-2 py-0.5 rounded-md text-[11px] font-bold border transition-all cursor-pointer ${
-                          String(manualRate) === String(val)
-                            ? 'bg-teal-600 text-white border-teal-700'
-                            : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                <p className="text-[11px] text-slate-600">
+                  {lang === 'mr' 
+                    ? 'अनेक परिस्थिती लागू असल्यास सर्वात सुरक्षित (रूढीवादी) कृतीला प्राधान्य दिले जाईल (कपातींची आंधळी बेरीज केली जाणार नाही).'
+                    : 'When multiple conditions apply, the system prioritizes the most conservative appropriate action without blind stacking.'}
+                </p>
+
+                <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+                  {VANNAMEI_CRITICAL_CONDITIONS.map((cond) => {
+                    const isChecked = criticalConditions.includes(cond.id);
+                    return (
+                      <div
+                        key={cond.id}
+                        onClick={() => toggleCriticalCondition(cond.id)}
+                        className={`p-2.5 rounded-xl border flex items-start gap-2.5 cursor-pointer transition-all ${
+                          isChecked
+                            ? 'bg-amber-50 border-amber-300 text-amber-950 font-bold shadow-xs'
+                            : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
                         }`}
                       >
-                        {val}%
-                      </button>
-                    ))}
-                  </div>
-                )}
+                        <div className="mt-0.5 shrink-0 text-teal-600">
+                          {isChecked ? <CheckSquare className="w-4 h-4 text-amber-600" /> : <Square className="w-4 h-4 text-slate-300" />}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <span className="block text-xs font-bold leading-tight">
+                            {lang === 'mr' ? cond.label_mr : cond.label}
+                          </span>
+                          <span className="block text-[10px] text-slate-500 mt-0.5">
+                            {lang === 'mr' ? cond.guidance_mr : cond.guidance}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
 
           </div>
         </div>
 
-        {/* RIGHT COLUMN: CALCULATED RESULTS & TRANSPARENCY */}
+        {/* RIGHT COLUMN: CALCULATED RESULTS & FEED ACCOUNTABILITY */}
         <div className="lg:col-span-6 space-y-4">
           
           {/* Main Calculation Card */}
@@ -1171,12 +1589,6 @@ export default function FeedCalculator({
                 <p className="text-sm font-semibold text-teal-100 max-w-sm mx-auto leading-relaxed">
                   {lang === 'mr' ? calculationResult.message_mr || calculationResult.message : calculationResult.message || t.calculator.incompleteForm}
                 </p>
-                {isIMCNursery && (
-                  <div className="p-3 bg-white/10 rounded-xl max-w-xs mx-auto text-xs text-teal-200">
-                    <span className="font-bold block text-white">{lang === 'mr' ? 'बायोमास विचार:' : 'Biomass Consideration:'}</span>
-                    <span>{lang === 'mr' ? '१० लाख स्पॉन = १.५ किलो' : '1 million spawn = 1.5 kg initial biomass'}</span>
-                  </div>
-                )}
               </div>
             ) : (
               /* PRIMARY SUCCESS VIEW */
@@ -1185,13 +1597,13 @@ export default function FeedCalculator({
                 {/* 1. Daily Feed Requirement */}
                 <div className="bg-white/10 backdrop-blur-md rounded-2xl p-4 sm:p-5 border border-white/15 shadow-inner">
                   <div className="flex items-center justify-between text-xs text-teal-200 font-semibold mb-1">
-                    <span>{t.calculator.dailyFeed}</span>
+                    <span>{t.feedTracking?.calculatedRequired || (lang === 'mr' ? 'आवश्यक गणना केलेले खाद्य' : 'Calculated Feed Required')}</span>
                     <span className="bg-amber-400 text-slate-950 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">
                       {t.calculator.perDay}
                     </span>
                   </div>
                   <div className="text-3xl sm:text-4xl font-black text-amber-300 tracking-tight flex items-baseline gap-2">
-                    <span>{formatDisplayNumber(calculationResult.dailyFeed, 2)}</span>
+                    <span>{formatDisplayNumber(calculationResult.calculatedFeed || calculationResult.dailyFeed, 2)}</span>
                     <span className="text-base sm:text-lg font-bold text-white">kg / day</span>
                   </div>
                   
@@ -1273,7 +1685,263 @@ export default function FeedCalculator({
 
           </div>
 
-          {/* SECTION 13: TRANSPARENCY OF BIOMASS CALCULATION */}
+          {/* PROPOSED ADJUSTMENT / CONDITION-BASED GUIDANCE CARD */}
+          {calculationResult.proposedAdjustment && calculationResult.proposedAdjustment.reason && (
+            <div className="bg-amber-50/90 border border-amber-300 rounded-2xl p-4 text-xs space-y-2 animate-fadeIn shadow-xs">
+              <div className="flex items-center justify-between border-b border-amber-200/80 pb-2">
+                <span className="font-extrabold text-amber-950 flex items-center gap-1.5">
+                  <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0" />
+                  <span>{lang === 'mr' ? 'मार्गदर्शन व प्रस्तावित समायोजन' : 'Observation Guidance & Proposed Adjustment'}</span>
+                </span>
+                <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-amber-200/80 text-amber-900">
+                  {calculationResult.proposedAdjustment.action}
+                </span>
+              </div>
+              <p className="text-amber-900 leading-snug">
+                {lang === 'mr' ? calculationResult.proposedAdjustment.reason_mr : calculationResult.proposedAdjustment.reason}
+              </p>
+              <div className="p-2.5 bg-white/80 rounded-xl border border-amber-200 flex items-center justify-between font-bold text-amber-950">
+                <span>{lang === 'mr' ? 'प्रस्तावित खाद्य प्रमाण:' : 'Proposed Adjusted Quantity:'}</span>
+                <span className="text-sm text-amber-900 font-extrabold">
+                  {formatDisplayNumber(calculationResult.proposedAdjustment.proposedFeed, 2)} kg
+                </span>
+              </div>
+              <p className="text-[10px] text-amber-800/80 italic">
+                {lang === 'mr' 
+                  ? '* हे केवळ मार्गदर्शक मूल्य आहे. खालील रकान्यात अंतिम खाद्य प्रमाण स्वतः तपासा व निश्चित करा.'
+                  : '* This is guidance based on observations. Farmer confirmation is required below.'}
+              </p>
+            </div>
+          )}
+
+          {/* ========================================================================= */}
+          {/* FEATURE 3: CALCULATED VS CONFIRMED VS ACTUAL FEED ACCOUNTABILITY TRACKING */}
+          {/* ========================================================================= */}
+          {calculationResult.isValid && (
+            <div className="bg-white rounded-3xl p-5 sm:p-6 border-2 border-teal-600/30 shadow-card space-y-4 animate-fadeIn">
+              <div className="border-b border-slate-100 pb-3 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Scale className="w-5 h-5 text-teal-700" />
+                  <h4 className="font-extrabold text-slate-900 text-sm sm:text-base">
+                    {t.feedTracking?.title || (lang === 'mr' ? 'खाद्य जबाबदारी व प्रत्यक्ष ट्रॅकिंग' : 'Feed Accountability & Tracking')}
+                  </h4>
+                </div>
+                <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-teal-50 text-teal-800 border border-teal-200">
+                  {lang === 'mr' ? '३-टप्पे ट्रॅकिंग' : '3-Tier Tracking'}
+                </span>
+              </div>
+
+              {/* Step 1: Calculated Feed Required (Fishry Estimated) */}
+              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 space-y-1">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-bold text-slate-700">
+                    1. {t.feedTracking?.calculatedRequired || (lang === 'mr' ? 'आवश्यक गणना केलेले खाद्य' : 'Calculated Feed Required')}:
+                  </span>
+                  <span className="font-mono text-slate-500 font-medium">Fishry Estimate</span>
+                </div>
+                <div className="flex items-baseline justify-between">
+                  <span className="text-2xl font-black text-slate-900">
+                    {formatDisplayNumber(calculationResult.calculatedFeed || calculationResult.dailyFeed, 2)}{' '}
+                    <span className="text-xs font-normal text-slate-500">kg/day</span>
+                  </span>
+                  {calculationResult.feedPriceNum > 0 && (
+                    <span className="text-xs font-semibold text-slate-500">
+                      ≈ ₹{formatDisplayNumber(calculationResult.dailyFeedCost, 0)}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Step 2: Confirmed Feeding Quantity (Farmer Decision after reviews) */}
+              <div className="p-3 bg-teal-50/60 rounded-2xl border border-teal-200 space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <label htmlFor="confirmedFeedInput" className="font-bold text-teal-950 flex items-center gap-1.5">
+                    <span>2. {t.feedTracking?.confirmedQuantity || (lang === 'mr' ? 'निश्चित केलेले खाद्य प्रमाण' : 'Confirmed Feeding Quantity')}</span>
+                    <span className="text-red-500">*</span>
+                  </label>
+                  <span className="text-[11px] text-teal-700 font-semibold bg-white px-2 py-0.5 rounded-md border border-teal-200">
+                    {isConfirmedManuallySet ? (lang === 'mr' ? 'समायोजित' : 'Custom') : (lang === 'mr' ? 'शिफारस' : 'Recommended')}
+                  </span>
+                </div>
+                <div className="relative">
+                  <input
+                    id="confirmedFeedInput"
+                    name="confirmedFeedInput"
+                    type="number"
+                    inputMode="decimal"
+                    step="0.1"
+                    min="0"
+                    value={confirmedFeed}
+                    onChange={(e) => {
+                      setConfirmedFeed(e.target.value);
+                      setIsConfirmedManuallySet(true);
+                    }}
+                    placeholder={`e.g. ${calculationResult.dailyFeed}`}
+                    className="w-full h-11 px-3.5 rounded-xl bg-white border border-teal-300 text-slate-900 font-bold text-base focus:outline-none focus:ring-2 focus:ring-teal-500 shadow-xs"
+                  />
+                  <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-teal-700 pointer-events-none">
+                    kg
+                  </span>
+                </div>
+                <p className="text-[11px] text-teal-800/90 leading-tight">
+                  {lang === 'mr'
+                    ? 'निरीक्षणे व हवामान तपासून तुम्ही ठरवलेले प्रमाण. हे गणना केलेल्या प्रमाणापेक्षा वेगळे असू शकते.'
+                    : 'The quantity you decide to feed after reviewing observations and conditions.'}
+                </p>
+              </div>
+
+              {/* Step 3: Actual Feed Given (Manual Farmer Entry) */}
+              <div className="p-3.5 bg-amber-50/70 rounded-2xl border-2 border-amber-300 space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <label htmlFor="actualFeedInput" className="font-extrabold text-amber-950 flex items-center gap-1.5">
+                    <span>3. {t.feedTracking?.actualGiven || (lang === 'mr' ? 'प्रत्यक्ष दिलेले खाद्य' : 'Actual Feed Given')}</span>
+                    <span className="text-amber-700 font-normal">({lang === 'mr' ? 'खाद्य दिल्यानंतर भरा' : 'Post-feeding entry'})</span>
+                  </label>
+                  <span className="text-[10px] font-bold text-amber-800 bg-white px-2 py-0.5 rounded-md border border-amber-300 uppercase">
+                    {lang === 'mr' ? 'शेतकरी नोंद' : 'Manual Entry'}
+                  </span>
+                </div>
+
+                <div className="relative">
+                  <input
+                    id="actualFeedInput"
+                    name="actualFeedInput"
+                    type="number"
+                    inputMode="decimal"
+                    step="0.1"
+                    min="0"
+                    value={actualFeed}
+                    onChange={(e) => setActualFeed(e.target.value)}
+                    placeholder={lang === 'mr' ? 'प्रत्यक्ष दिलेले खाद्य भरा (उदा. 28.5 kg)' : 'Enter actual feed given (e.g. 28.5 kg)'}
+                    className="w-full h-12 px-3.5 rounded-xl bg-white border-2 border-amber-400 text-slate-900 font-black text-lg focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-xs"
+                  />
+                  <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-amber-800 uppercase pointer-events-none">
+                    kg
+                  </span>
+                </div>
+
+                {/* Quick copy buttons if actual was equal to confirmed or calculated */}
+                <div className="flex items-center gap-1.5 pt-1 flex-wrap">
+                  <span className="text-[11px] text-amber-900 font-semibold">{lang === 'mr' ? 'द्रुत नोंद:' : 'Quick copy:'}</span>
+                  <button
+                    type="button"
+                    onClick={() => setActualFeed(String(confirmedFeed || calculationResult.dailyFeed))}
+                    className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 cursor-pointer"
+                  >
+                    = {lang === 'mr' ? 'निश्चित प्रमाण' : 'Confirmed'} ({confirmedFeed || calculationResult.dailyFeed} kg)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActualFeed(String(calculationResult.calculatedFeed || calculationResult.dailyFeed))}
+                    className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 cursor-pointer"
+                  >
+                    = {lang === 'mr' ? 'गणना प्रमाण' : 'Calculated'} ({calculationResult.calculatedFeed || calculationResult.dailyFeed} kg)
+                  </button>
+                </div>
+              </div>
+
+              {/* LIVE DIFFERENCE & COST DISPLAY (When actual feed is entered) */}
+              {feedAccountability.hasActual ? (
+                <div className="p-4 bg-slate-900 text-white rounded-2xl space-y-3">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2 text-xs font-bold text-slate-300 uppercase tracking-wider">
+                    <span>{t.feedTracking?.difference || (lang === 'mr' ? 'फरक व खर्च विश्लेषण' : 'Difference & Cost')}</span>
+                    <span className={`px-2 py-0.5 rounded-md text-[11px] font-extrabold ${
+                      feedAccountability.differenceKg > 0 
+                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' 
+                        : feedAccountability.differenceKg < 0 
+                        ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40' 
+                        : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                    }`}>
+                      {feedAccountability.differenceKg > 0 
+                        ? (lang === 'mr' ? '+ जास्त दिले' : '+ Fed More') 
+                        : feedAccountability.differenceKg < 0 
+                        ? (lang === 'mr' ? '- कमी दिले' : '- Fed Less') 
+                        : (lang === 'mr' ? 'अचूक समान' : 'Exact Match')}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    {/* Difference kg & % */}
+                    <div className="p-3 bg-white/5 rounded-xl border border-white/10">
+                      <span className="text-[11px] text-slate-400 block font-medium">
+                        {t.feedTracking?.difference || (lang === 'mr' ? 'फरक (kg / %)' : 'Difference (kg / %)')}
+                      </span>
+                      <div className="text-xl font-black text-amber-300 tracking-tight flex items-baseline gap-1 mt-0.5">
+                        <span>{feedAccountability.differenceKg >= 0 ? `+${feedAccountability.differenceKg}` : feedAccountability.differenceKg}</span>
+                        <span className="text-xs text-slate-400 font-normal">kg</span>
+                      </div>
+                      <span className="text-[11px] text-slate-300 block mt-0.5">
+                        {feedAccountability.differencePercent !== null 
+                          ? `${feedAccountability.differencePercent >= 0 ? `+${feedAccountability.differencePercent}` : feedAccountability.differencePercent}%`
+                          : (lang === 'mr' ? 'लागू नाही' : 'Not applicable')}
+                      </span>
+                    </div>
+
+                    {/* Actual Feed Cost */}
+                    <div className="p-3 bg-white/5 rounded-xl border border-white/10">
+                      <span className="text-[11px] text-slate-400 block font-medium">
+                        {t.feedTracking?.actualCost || (lang === 'mr' ? 'प्रत्यक्ष खाद्य खर्च' : 'Actual Feed Cost')}
+                      </span>
+                      <div className="text-xl font-black text-emerald-400 tracking-tight mt-0.5">
+                        ₹{formatDisplayNumber(feedAccountability.actualFeedCost, 0)}
+                      </div>
+                      <span className="text-[10px] text-slate-400 block mt-0.5">
+                        {feedAccountability.actualFeedKg} kg × ₹{Number(feedPrice) || 0}/kg
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Optional Reason for Difference */}
+                  <div className="space-y-1 pt-1">
+                    <label htmlFor="reasonInput" className="block text-xs font-medium text-slate-300">
+                      {t.feedTracking?.differenceReason || (lang === 'mr' ? 'फरकाचे कारण (पर्यायी)' : 'Reason for Difference (Optional)')}:
+                    </label>
+                    <input
+                      id="reasonInput"
+                      type="text"
+                      value={differenceReason}
+                      onChange={(e) => setDifferenceReason(e.target.value)}
+                      placeholder={lang === 'mr' ? 'उदा. खाण्याचा चांगला प्रतिसाद, ढगाळ वातावरण, साठा संपला' : 'e.g. Good appetite, cloudy weather, bag stock limit'}
+                      className="w-full h-9 px-3 rounded-xl bg-white/10 border border-white/20 text-white placeholder-slate-400 text-xs focus:outline-none focus:ring-1 focus:ring-teal-400"
+                    />
+                    {/* Quick reason tags */}
+                    <div className="flex items-center gap-1.5 pt-1 flex-wrap">
+                      {(lang === 'mr' 
+                        ? ['चांगला प्रतिसाद', 'कमी भूक', 'ढगाळ वातावरण', 'साठा संपला', 'तपासणी शिल्लक']
+                        : ['High appetite', 'Low appetite', 'Cloudy/rainy', 'Stock limit', 'Tray leftovers']
+                      ).map((tag) => (
+                        <button
+                          key={tag}
+                          type="button"
+                          onClick={() => setDifferenceReason(tag)}
+                          className="px-2 py-0.5 rounded-md text-[10px] bg-white/10 hover:bg-white/20 text-slate-300 border border-white/10 cursor-pointer"
+                        >
+                          {tag}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <p className="text-[10px] text-slate-400 leading-tight border-t border-slate-800 pt-2">
+                    {lang === 'mr'
+                      ? 'ऋण फरक (-) म्हणजे गणनेपेक्षा कमी खाद्य दिले गेले. धन फरक (+) म्हणजे जास्त दिले गेले. दोन्ही स्थिती आपोआप चूक किंवा बरोबर मानल्या जात नाहीत.'
+                      : 'A negative difference means less feed was given than calculated. A positive difference means more was given. Neither situation is classified as correct or incorrect.'}
+                  </p>
+                </div>
+              ) : (
+                <div className="p-3 bg-slate-50 rounded-xl border border-dashed border-slate-300 text-center">
+                  <span className="text-xs text-slate-500">
+                    {lang === 'mr' 
+                      ? '💡 प्रत्यक्ष खाद्य दिल्यानंतर वर "प्रत्यक्ष दिलेले खाद्य" नोंदवा. यामुळे फरक व प्रत्यक्ष खर्च मोजला जाईल.'
+                      : '💡 Enter actual feed given above after feeding to calculate difference and actual cost.'}
+                  </span>
+                </div>
+              )}
+
+            </div>
+          )}
+
+          {/* TRANSPARENCY OF BIOMASS CALCULATION */}
           <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-xs space-y-2">
             <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
               <span className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
@@ -1300,26 +1968,21 @@ export default function FeedCalculator({
                     {lang === 'mr' ? calculationResult.biomassFormulaStr_mr : calculationResult.biomassFormulaStr}
                   </div>
                 </div>
-                <p className="text-[11px] text-slate-400 italic">
-                  {lang === 'mr' 
-                    ? '* १.५ किलो हे मूल्य प्रकल्प संदर्भ गृहीतक आहे, सार्वत्रिक वैज्ञानिक स्थिर मूल्य नाही.'
-                    : '* 1.5 kg is a stated project assumption, not labeled as a universal scientific constant.'}
-                </p>
               </div>
             ) : (
               <div className="text-xs text-slate-700 space-y-1.5 pt-1">
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   <div className="bg-slate-50 p-2 rounded-xl border border-slate-100">
-                    <span className="text-slate-500 block text-[11px]">{lang === 'mr' ? 'जिवंत मासे:' : 'Surviving Fish:'}</span>
+                    <span className="text-slate-500 block text-[11px]">{lang === 'mr' ? 'जिवंत संख्या:' : 'Surviving Count:'}</span>
                     <span className="font-bold text-slate-900">
-                      {formatDisplayNumber(calculationResult.survivingFish, 0)} {lang === 'mr' ? 'मासे' : 'fish'}
+                      {formatDisplayNumber(calculationResult.survivingFish, 0)} {isVannamei || isFreshwaterPrawn ? (lang === 'mr' ? 'कोळंबी' : 'prawn') : (lang === 'mr' ? 'मासे' : 'fish')}
                     </span>
                     <span className="block text-[10px] text-slate-400 mt-0.5">
                       {stocked || 0} × {survivalPercent || 0}% ÷ 100
                     </span>
                   </div>
                   <div className="bg-slate-50 p-2 rounded-xl border border-slate-100">
-                    <span className="text-slate-500 block text-[11px]">{lang === 'mr' ? 'एकूण बायोमास:' : 'Total Biomass:'}</span>
+                    <span className="text-slate-500 block text-[11px]">{t.feedTracking?.estimatedBiomass || (lang === 'mr' ? 'अंदाजित जैवभार' : 'Estimated Biomass')}:</span>
                     <span className="font-bold text-teal-900">
                       {formatDisplayNumber(calculationResult.biomass, 2)} kg
                     </span>
@@ -1332,7 +1995,7 @@ export default function FeedCalculator({
             )}
           </div>
 
-          {/* SECTION 11 & 16: WHY THE RATE WAS SELECTED & FEEDING MODE */}
+          {/* WHY THE RATE WAS SELECTED & FEEDING MODE */}
           <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-xs space-y-2.5">
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
               <span className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
@@ -1356,9 +2019,11 @@ export default function FeedCalculator({
 
               {calculationResult.applicableRange && (
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-500 font-medium">{lang === 'mr' ? 'लागू संदर्भ श्रेणी:' : 'Applicable Reference Range:'}</span>
+                  <span className="text-slate-500 font-medium">{t.feedTracking?.referenceRate || (lang === 'mr' ? 'संदर्भित खाद्य दर:' : 'Reference Feeding Rate:')}</span>
                   <span className="font-bold text-sky-800 bg-sky-50 px-2 py-0.5 rounded-md border border-sky-200">
-                    {calculationResult.applicableRange.min}–{calculationResult.applicableRange.max}% BW/day
+                    {calculationResult.applicableRange.min === calculationResult.applicableRange.max 
+                      ? `${calculationResult.applicableRange.min}% BW/day`
+                      : `${calculationResult.applicableRange.min}–${calculationResult.applicableRange.max}% BW/day`}
                   </span>
                 </div>
               )}
@@ -1383,17 +2048,15 @@ export default function FeedCalculator({
             </div>
           </div>
 
-          {/* SECTION 12: CONTEXTUAL WARNING SYSTEM */}
+          {/* CONTEXTUAL WARNING SYSTEM */}
           {calculationResult.warningText && (
             <div className="bg-amber-50/90 border border-amber-300 rounded-2xl p-4 text-xs space-y-1.5 shadow-xs animate-fadeIn">
               <div className="flex items-center gap-1.5 font-extrabold text-amber-950">
                 <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
                 <span>
                   {calculationResult.warningType === 'IMC_NURSERY' ? (t.calculator.imcNurseryWarningTitle || 'MANUAL FEEDING REQUIRED')
-                    : calculationResult.warningType === 'IMC_REARING' ? (t.calculator.imcRearingWarningTitle || 'REFERENCE FEEDING RANGE')
-                    : calculationResult.warningType === 'IMC_GROWOUT' ? (t.calculator.imcGrowoutWarningTitle || 'REFERENCE FEEDING RANGE')
-                    : calculationResult.warningType === 'MAGUR' ? (t.calculator.magurWarningTitle || 'MANUAL FEEDING REQUIRED')
-                    : calculationResult.warningType === 'GRASS_CARP' ? (t.calculator.grassCarpWarningTitle || 'SPECIAL FEEDING METHOD')
+                    : calculationResult.warningType === 'VANNAMEI' ? (lang === 'mr' ? 'व्हॅनामेई संदर्भ सूचना' : 'VANNAMEI REFERENCE GUIDANCE')
+                    : calculationResult.warningType === 'FRESHWATER_PRAWN' ? (lang === 'mr' ? 'FAO महा-कोळंबी सूचना' : 'FAO PRAWN FEEDING GUIDANCE')
                     : (t.calculator.customWarningTitle || 'MANUAL RATE REQUIRED')}
                 </span>
               </div>
@@ -1433,7 +2096,7 @@ export default function FeedCalculator({
             )}
           </div>
 
-          {/* SECTION 12: GENERAL FEEDING WARNING (ALWAYS DISPLAYED AFTER FEED CALCULATION) */}
+          {/* GENERAL FEEDING WARNING (ALWAYS DISPLAYED AFTER FEED CALCULATION) */}
           {calculationResult.isValid && (
             <div className="bg-sky-50/90 border border-sky-200 rounded-2xl p-4 text-sky-950 text-xs space-y-1.5 shadow-xs animate-fadeIn">
               <div className="flex items-center gap-1.5 font-bold text-sky-900">
@@ -1460,11 +2123,11 @@ export default function FeedCalculator({
                   {lang === 'mr' ? 'दैनिक खाद्य:' : 'Daily:'}
                 </span>
                 <span className="text-base font-extrabold text-amber-300 truncate">
-                  {formatDisplayNumber(calculationResult.dailyFeed, 2)} kg
+                  {formatDisplayNumber(confirmedFeed || calculationResult.dailyFeed, 2)} kg
                 </span>
               </div>
               <p className="text-[10px] text-teal-200/80 truncate">
-                {calculationResult.dailyFeedCost > 0 ? `₹${formatDisplayNumber(calculationResult.dailyFeedCost, 0)}/दिवस • ` : ''}
+                {actualFeed ? `${lang === 'mr' ? 'प्रत्यक्ष:' : 'Actual:'} ${actualFeed}kg • ` : ''}
                 {calculationResult.feedingRate}% दर • {formatDisplayNumber(calculationResult.biomass, 2)} kg बायोमास
               </p>
             </div>
@@ -1509,25 +2172,34 @@ export default function FeedCalculator({
               </p>
             </div>
 
-            {/* Quick Numbers Card */}
-            <div className="bg-emerald-50/80 border border-emerald-200 rounded-2xl p-3.5 space-y-2 text-left">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-emerald-800 font-bold">{lang === 'mr' ? 'आजचे एकूण खाद्य:' : "Today's Total Feed:"}</span>
-                <span className="text-base font-extrabold text-emerald-950">{formatDisplayNumber(savedModalInfo.dailyFeed, 2)} kg</span>
+            {/* Quick Numbers Card with 3-tier Accountability */}
+            <div className="bg-emerald-50/80 border border-emerald-200 rounded-2xl p-3.5 space-y-2 text-left text-xs">
+              <div className="flex items-center justify-between border-b border-emerald-200/60 pb-1.5">
+                <span className="text-slate-600">{t.feedTracking?.calculatedRequired || (lang === 'mr' ? 'गणना केलेले खाद्य:' : 'Calculated Feed:')}</span>
+                <span className="font-bold text-slate-900">{formatDisplayNumber(savedModalInfo.calculatedFeed, 2)} kg</span>
               </div>
-              <div className="grid grid-cols-2 gap-2 text-[11px] pt-2 border-t border-emerald-200/60">
-                <div>
-                  <span className="text-slate-500 block">{lang === 'mr' ? 'सकाळ (५०%):' : 'Morning (50%):'}</span>
-                  <span className="font-bold text-slate-800">{formatDisplayNumber(savedModalInfo.morningFeed, 2)} kg</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 block">{lang === 'mr' ? 'संध्याकाळ (५०%):' : 'Evening (50%):'}</span>
-                  <span className="font-bold text-slate-800">{formatDisplayNumber(savedModalInfo.eveningFeed, 2)} kg</span>
-                </div>
+              <div className="flex items-center justify-between border-b border-emerald-200/60 pb-1.5">
+                <span className="text-slate-600">{t.feedTracking?.confirmedQuantity || (lang === 'mr' ? 'निश्चित केलेले प्रमाण:' : 'Confirmed Quantity:')}</span>
+                <span className="font-extrabold text-teal-900">{formatDisplayNumber(savedModalInfo.confirmedFeed, 2)} kg</span>
               </div>
+              <div className="flex items-center justify-between border-b border-emerald-200/60 pb-1.5">
+                <span className="text-slate-600">{t.feedTracking?.actualGiven || (lang === 'mr' ? 'प्रत्यक्ष दिलेले खाद्य:' : 'Actual Feed Given:')}</span>
+                <span className="font-black text-emerald-950">
+                  {savedModalInfo.actualFeed !== null ? `${formatDisplayNumber(savedModalInfo.actualFeed, 2)} kg` : (lang === 'mr' ? 'नोंदवलेले नाही' : 'Not recorded')}
+                </span>
+              </div>
+              {savedModalInfo.differenceKg !== null && (
+                <div className="flex items-center justify-between pt-0.5 text-xs">
+                  <span className="text-slate-600">{t.feedTracking?.difference || (lang === 'mr' ? 'फरक:' : 'Difference:')}</span>
+                  <span className="font-bold text-slate-900">
+                    {savedModalInfo.differenceKg >= 0 ? `+${savedModalInfo.differenceKg}` : savedModalInfo.differenceKg} kg
+                    {savedModalInfo.differencePercent !== null ? ` (${savedModalInfo.differencePercent >= 0 ? `+${savedModalInfo.differencePercent}` : savedModalInfo.differencePercent}%)` : ''}
+                  </span>
+                </div>
+              )}
               {savedModalInfo.dailyCost > 0 && (
-                <div className="flex items-center justify-between pt-1 text-xs text-emerald-900 font-extrabold">
-                  <span>{lang === 'mr' ? 'अंदाजित खर्च:' : 'Estimated Cost:'}</span>
+                <div className="flex items-center justify-between pt-1 text-xs text-emerald-900 font-extrabold border-t border-emerald-200/80">
+                  <span>{lang === 'mr' ? 'खर्च:' : 'Cost:'}</span>
                   <span>₹{formatDisplayNumber(savedModalInfo.dailyCost, 0)}</span>
                 </div>
               )}
@@ -1547,20 +2219,6 @@ export default function FeedCalculator({
                 <span>{lang === 'mr' ? 'डॅशबोर्डवर जा (आजची स्थिती पहा)' : 'Go to Dashboard (View Today)'}</span>
                 <ArrowRight className="w-4 h-4 ml-auto" />
               </button>
-
-              {ponds && ponds.length > 1 && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSavedModalInfo(null);
-                    handleReset();
-                  }}
-                  className="w-full py-2.5 px-4 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-800 font-bold text-xs flex items-center justify-center gap-2 border border-sky-200 transition-all cursor-pointer"
-                >
-                  <Waves className="w-4 h-4" />
-                  <span>{lang === 'mr' ? 'दुसऱ्या तळ्याची गणना करा' : 'Calculate for Another Pond'}</span>
-                </button>
-              )}
 
               <button
                 type="button"

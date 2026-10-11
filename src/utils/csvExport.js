@@ -28,7 +28,16 @@ export function exportFeedHistoryToCsv(records, language = 'en') {
         'संध्याकाळचे खाद्य (किलो)',
         'खाद्याचा दर (₹/किलो)',
         'दैनिक खाद्य खर्च (₹)',
-        'नियम तपशील'
+        'नियम तपशील',
+        'आवश्यक गणना केलेले खाद्य (किलो)',
+        'निश्चित केलेले खाद्य प्रमाण (किलो)',
+        'प्रत्यक्ष दिलेले खाद्य (किलो)',
+        'फरक (किलो)',
+        'फरक (%)',
+        'प्रत्यक्ष खाद्य खर्च (₹)',
+        'खाद्य ट्रे निरीक्षण',
+        'गंभीर परिस्थिती बदल',
+        'फरकाचे कारण / शेरा'
       ]
     : [
         'Date & Time',
@@ -47,7 +56,16 @@ export function exportFeedHistoryToCsv(records, language = 'en') {
         'Evening Feed (kg)',
         'Feed Price (₹/kg)',
         'Daily Feed Cost (₹)',
-        'Rule Details'
+        'Rule Details',
+        'Calculated Feed Required (kg)',
+        'Confirmed Feeding Quantity (kg)',
+        'Actual Feed Given (kg)',
+        'Difference (kg)',
+        'Difference (%)',
+        'Actual Feed Cost (₹)',
+        'Feeding-Tray Observation',
+        'Critical Conditions',
+        'Difference Reason / Notes'
       ];
 
   const escapeCell = (val) => {
@@ -63,6 +81,37 @@ export function exportFeedHistoryToCsv(records, language = 'en') {
       : (isMr ? 'स्वयंचलित नियम' : 'Automatic rule');
 
     const ruleExpl = isMr ? (r.rule_explanation_mr || r.rule_explanation) : (r.rule_explanation || r.rule_explanation_mr);
+
+    // Feature 3 Fields Handling (Preserves older records without assuming actual = calculated)
+    const calcFeed = r.calculated_feed !== undefined && r.calculated_feed !== null ? Number(r.calculated_feed).toFixed(2) : Number(r.daily_feed).toFixed(2);
+    const confFeed = r.confirmed_feed !== undefined && r.confirmed_feed !== null ? Number(r.confirmed_feed).toFixed(2) : Number(r.daily_feed).toFixed(2);
+    const hasActual = r.actual_feed !== undefined && r.actual_feed !== null && r.actual_feed !== '' && !isNaN(Number(r.actual_feed));
+    const notRec = isMr ? 'नोंदवलेले नाही' : 'Not recorded';
+
+    const actualFeedStr = hasActual ? Number(r.actual_feed).toFixed(2) : notRec;
+    const diffKgStr = hasActual
+      ? (r.difference_kg !== undefined && r.difference_kg !== null ? Number(r.difference_kg).toFixed(2) : (Number(r.actual_feed) - Number(calcFeed)).toFixed(2))
+      : notRec;
+    
+    let diffPctStr = notRec;
+    if (hasActual) {
+      if (Number(calcFeed) === 0) {
+        diffPctStr = isMr ? 'लागू नाही' : 'Not applicable';
+      } else if (r.difference_percent !== undefined && r.difference_percent !== null) {
+        diffPctStr = `${Number(r.difference_percent).toFixed(1)}%`;
+      } else {
+        const pct = ((Number(r.actual_feed) - Number(calcFeed)) / Number(calcFeed)) * 100;
+        diffPctStr = `${pct.toFixed(1)}%`;
+      }
+    }
+
+    const actualCostStr = hasActual
+      ? (r.actual_feed_cost !== undefined && r.actual_feed_cost !== null ? Math.round(Number(r.actual_feed_cost)) : Math.round(Number(r.actual_feed) * Number(r.feed_price || 0)))
+      : notRec;
+
+    const trayObsStr = r.tray_observation ? r.tray_observation : (isMr ? 'निरीक्षण नाही' : 'No observation');
+    const critCondStr = Array.isArray(r.critical_conditions) && r.critical_conditions.length > 0 ? r.critical_conditions.join('; ') : (isMr ? 'कोणतेही नाही' : 'None');
+    const diffReasonStr = r.difference_reason || r.notes || '';
 
     return [
       escapeCell(formattedDate),
@@ -81,7 +130,16 @@ export function exportFeedHistoryToCsv(records, language = 'en') {
       escapeCell(r.evening_feed),
       escapeCell(r.feed_price || 0),
       escapeCell(r.feed_cost || 0),
-      escapeCell(ruleExpl || '')
+      escapeCell(ruleExpl || ''),
+      escapeCell(calcFeed),
+      escapeCell(confFeed),
+      escapeCell(actualFeedStr),
+      escapeCell(diffKgStr),
+      escapeCell(diffPctStr),
+      escapeCell(actualCostStr),
+      escapeCell(trayObsStr),
+      escapeCell(critCondStr),
+      escapeCell(diffReasonStr)
     ].join(',');
   });
 

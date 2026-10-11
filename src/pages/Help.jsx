@@ -105,6 +105,18 @@ export default function Help({ lang }) {
                 <td className="py-3 px-3 text-emerald-700 font-bold">Forage & Weeds</td>
                 <td className="py-3 px-3 text-slate-500">FORAGE_BASED</td>
               </tr>
+              <tr className="hover:bg-teal-50/50">
+                <td className="py-3 px-3 font-bold text-slate-900">Vannamei Shrimp (Litopenaeus vannamei)</td>
+                <td className="py-3 px-3">Days 1–120 (0.02g – 25g)</td>
+                <td className="py-3 px-3 text-orange-700 font-bold">60–35% (D1–7) to 1.8% (D120)</td>
+                <td className="py-3 px-3 text-slate-500">Age Reference Schedule</td>
+              </tr>
+              <tr className="hover:bg-teal-50/50">
+                <td className="py-3 px-3 font-bold text-slate-900">Freshwater Prawn (M. rosenbergii)</td>
+                <td className="py-3 px-3">Hatchery / Nursery / Grow-out / Broodstock</td>
+                <td className="py-3 px-3 text-teal-700 font-bold">Nursery 10–20% | Broodstock 1–3%</td>
+                <td className="py-3 px-3 text-slate-500">FAO FTP 428 Manual</td>
+              </tr>
             </tbody>
           </table>
         </div>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   Scale, 
   IndianRupee, 
@@ -34,6 +34,48 @@ export default function Dashboard({
 
   // Interactive popup modals: 'today_feed' | 'today_cost' | 'feed_records_empty' | null
   const [activeModal, setActiveModal] = useState(null);
+
+  // Feed Accountability Summary (Feature 3)
+  const {
+    totalCalculated,
+    totalActual,
+    totalDifference,
+    actualExpenditure,
+    actualRecordedCount,
+    missingActualCount,
+  } = useMemo(() => {
+    let calcSum = 0;
+    let actSum = 0;
+    let actCount = 0;
+    let missCount = 0;
+    let costSum = 0;
+
+    feedHistory.forEach((r) => {
+      const calc = Number(r.calculated_feed ?? r.daily_feed) || 0;
+      calcSum += calc;
+
+      if (r.actual_feed !== null && r.actual_feed !== undefined && !isNaN(Number(r.actual_feed))) {
+        const act = Number(r.actual_feed);
+        actSum += act;
+        actCount += 1;
+        const price = Number(r.feed_price) || 0;
+        costSum += (r.actual_feed_cost !== null && !isNaN(Number(r.actual_feed_cost)))
+          ? Number(r.actual_feed_cost)
+          : (act * price);
+      } else {
+        missCount += 1;
+      }
+    });
+
+    return {
+      totalCalculated: calcSum,
+      totalActual: actSum,
+      totalDifference: actSum - calcSum,
+      actualExpenditure: costSum,
+      actualRecordedCount: actCount,
+      missingActualCount: missCount,
+    };
+  }, [feedHistory]);
 
   // Calculate today's totals
   const todayStr = new Date().toISOString().split('T')[0];
@@ -190,6 +232,97 @@ export default function Dashboard({
         </div>
 
       </div>
+
+      {/* FEED ACCOUNTABILITY & TRACKING SUMMARY (Feature 3) */}
+      {feedHistory.length > 0 && (
+        <div className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 border border-slate-200/90 shadow-card space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div className="flex items-center gap-2">
+              <Scale className="w-5 h-5 text-teal-600" />
+              <h3 className="font-extrabold text-slate-900 text-sm sm:text-base">
+                {t.dashboard?.accountability?.title || (lang === 'mr' ? 'खाद्य जबाबदारी व ट्रॅकिंग सारांश' : 'Feed Accountability & Tracking Summary')}
+              </h3>
+            </div>
+            {onNavigateToHistory && (
+              <button
+                onClick={onNavigateToHistory}
+                className="text-xs font-bold text-teal-700 hover:text-teal-900 flex items-center gap-1 cursor-pointer"
+              >
+                <span>{lang === 'mr' ? 'तपशील पहा' : 'View Details'}</span>
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-4 text-xs">
+            {/* Total Calculated Required */}
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+              <span className="text-[11px] text-slate-500 font-medium block">
+                {t.dashboard?.accountability?.totalCalculated || (lang === 'mr' ? 'एकूण आवश्यक गणना' : 'Total Calculated Required')}
+              </span>
+              <span className="text-lg sm:text-xl font-black text-slate-900 mt-1 block">
+                {formatDisplayNumber(totalCalculated, 2)} kg
+              </span>
+            </div>
+
+            {/* Total Actual Given */}
+            <div className="p-3 bg-teal-50/70 rounded-xl border border-teal-200">
+              <span className="text-[11px] text-teal-700 font-medium block">
+                {t.dashboard?.accountability?.totalActual || (lang === 'mr' ? 'एकूण प्रत्यक्ष दिलेले' : 'Total Actual Given')}
+              </span>
+              <span className="text-lg sm:text-xl font-black text-teal-950 mt-1 block">
+                {actualRecordedCount > 0 ? `${formatDisplayNumber(totalActual, 2)} kg` : (lang === 'mr' ? 'नोंद नाही' : 'No records')}
+              </span>
+              <span className="text-[10px] text-teal-600 block mt-0.5">
+                {actualRecordedCount}/{feedHistory.length} {lang === 'mr' ? 'नोंदी' : 'records'}
+              </span>
+            </div>
+
+            {/* Total Difference */}
+            <div className="p-3 bg-white rounded-xl border border-slate-200">
+              <span className="text-[11px] text-slate-500 font-medium block">
+                {t.dashboard?.accountability?.totalDifference || (lang === 'mr' ? 'एकूण फरक' : 'Total Difference')}
+              </span>
+              <span className={`text-lg sm:text-xl font-black mt-1 block ${
+                totalDifference > 0 ? 'text-amber-700' : totalDifference < 0 ? 'text-sky-700' : 'text-slate-900'
+              }`}>
+                {actualRecordedCount > 0 
+                  ? `${totalDifference >= 0 ? `+${formatDisplayNumber(totalDifference, 2)}` : formatDisplayNumber(totalDifference, 2)} kg`
+                  : '—'}
+              </span>
+            </div>
+
+            {/* Actual Feed Expenditure */}
+            <div className="p-3 bg-emerald-50/70 rounded-xl border border-emerald-200">
+              <span className="text-[11px] text-emerald-700 font-medium block">
+                {t.dashboard?.accountability?.actualExpenditure || (lang === 'mr' ? 'प्रत्यक्ष खाद्य खर्च' : 'Actual Feed Expenditure')}
+              </span>
+              <span className="text-lg sm:text-xl font-black text-emerald-950 mt-1 block">
+                ₹{formatDisplayNumber(actualExpenditure, 0)}
+              </span>
+            </div>
+          </div>
+
+          {missingActualCount > 0 && (
+            <div className="p-2.5 bg-amber-50/80 border border-amber-200 rounded-xl flex items-center justify-between text-xs text-amber-900">
+              <div className="flex items-center gap-1.5">
+                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>
+                  <strong>{missingActualCount}</strong> {t.dashboard?.accountability?.missingNotice || (lang === 'mr' ? 'नोंदींमध्ये प्रत्यक्ष खाद्य भरलेले नाही' : 'records have no actual feed logged yet')}
+                </span>
+              </div>
+              {onNavigateToHistory && (
+                <button
+                  onClick={onNavigateToHistory}
+                  className="font-bold text-amber-800 hover:underline cursor-pointer"
+                >
+                  {lang === 'mr' ? 'इतिहास पहा →' : 'View History →'}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* QUICK POND FEEDING BAR (Direct Action for Farmer Ponds) */}
       {ponds && ponds.length > 0 ? (

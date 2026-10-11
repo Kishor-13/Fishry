@@ -7,7 +7,15 @@ import {
   calculateFeedCost 
 } from '../utils/calculations.js';
 import { findMatchingFeedingRule } from './feedingRuleService.js';
-import { IMC_NURSERY_REFERENCE, IMC_REARING_PERIODS, IMC_GROWOUT_PHASES } from '../constants/speciesData.js';
+import { 
+  IMC_NURSERY_REFERENCE, 
+  IMC_REARING_PERIODS, 
+  IMC_GROWOUT_PHASES,
+  VANNAMEI_FEEDING_SCHEDULE,
+  FEEDING_TRAY_OBSERVATIONS,
+  VANNAMEI_CRITICAL_CONDITIONS,
+  FRESHWATER_PRAWN_STAGES 
+} from '../constants/speciesData.js';
 
 /**
  * Standardized Calculation Contract
@@ -28,6 +36,10 @@ export function calculateFeed(input, ruleOverride = null) {
     cultureMonth = null,
     manualRate = null,
     rulesList = null,
+    cultureAge = null,
+    feedType = 'pellet',
+    trayObservation = 'none',
+    criticalConditions = [],
   } = input || {};
 
   // Standard output contract
@@ -36,6 +48,7 @@ export function calculateFeed(input, ruleOverride = null) {
     biomass: 0,
     feedingRate: null,
     dailyFeed: 0,
+    calculatedFeed: 0, // Feature 3: Calculated Feed Required
     morningFeed: 0,
     eveningFeed: 0,
     feedCost: 0,
@@ -56,7 +69,7 @@ export function calculateFeed(input, ruleOverride = null) {
     biomassFormulaStr_mr: '',
 
     // Contextual warning & notes
-    warningType: 'GENERAL', // 'IMC_NURSERY' | 'IMC_REARING' | 'IMC_GROWOUT' | 'MAGUR' | 'GRASS_CARP' | 'CUSTOM' | 'GENERAL'
+    warningType: 'GENERAL', // 'IMC_NURSERY' | 'IMC_REARING' | 'IMC_GROWOUT' | 'MAGUR' | 'GRASS_CARP' | 'CUSTOM' | 'VANNAMEI' | 'FRESHWATER_PRAWN' | 'GENERAL'
     warningText: '',
     warningText_mr: '',
     generalWarning: 'This is an estimated feed requirement based on the information entered and the selected feeding rule/reference. Actual feeding should be adjusted according to appetite, uneaten feed, growth, water quality, temperature, dissolved oxygen, stocking density, fish health, feed quality and other culture conditions.',
@@ -71,6 +84,7 @@ export function calculateFeed(input, ruleOverride = null) {
     message_mr: '',
     ruleExplanation: '',
     ruleExplanation_mr: '',
+    proposedAdjustment: null,
   };
 
   const spLower = (species || '').toLowerCase();
@@ -80,12 +94,358 @@ export function calculateFeed(input, ruleOverride = null) {
   const isCustomSpecies = Boolean(isCustom || species === 'Other / Custom' || spLower === 'other / custom');
   const isMagur = spLower === 'magur';
   const isGrassCarp = spLower === 'grass carp' || spLower === 'grass_carp';
+  const isVannamei = spLower.includes('vannamei') || spLower.includes('pacific white');
+  const isFreshwaterPrawn = spLower.includes('freshwater prawn') || spLower.includes('macrobrachium') || spLower.includes('river prawn') || spLower.includes('महा-कोळंबी');
 
   const numStocked = Number(stocked);
   const numSurvival = Number(survivalPercent);
   const numWeight = Number(averageWeight);
   const numPrice = Number(feedPrice) || 0;
   output.feedPriceNum = numPrice;
+
+  // ===============================================================
+  // FEATURE 1: VANNAMEI SHRIMP (Litopenaeus vannamei)
+  // Separate rules from finfish and freshwater prawn.
+  // Age-based reference schedule (Days 1–120).
+  // ===============================================================
+  if (isVannamei) {
+    output.scientific_name = 'Litopenaeus vannamei';
+    output.category = 'Crustacean';
+    output.warningType = 'VANNAMEI';
+    output.biomassBasis = 'NORMAL_SURVIVAL_WEIGHT';
+    output.rateSource = manualRate ? 'FARMER_ENTERED' : 'REFERENCE_ASSUMPTION';
+    output.feedingMode = 'REFERENCE_ASSUMPTION';
+    output.feedingMethod = 'BIOMASS_PERCENT';
+
+    output.generalWarning = 'Vannamei reference schedule figures are reference guidance rather than universal prescriptions. Always adjust according to feeding-tray observations, water quality, and critical pond conditions.';
+    output.generalWarning_mr = 'व्हॅनामेई संदर्भ वेळापत्रक ही मार्गदर्शक माहिती आहे, अंतिम नियम नाही. खाद्य ट्रे निरीक्षण, पाण्याची गुणवत्ता आणि तळ्यातील परिस्थितीनुसार प्रत्यक्ष खाद्य ठरवा.';
+
+    // Check stocked
+    if (!stocked || isNaN(numStocked) || numStocked <= 0) {
+      output.isIncomplete = true;
+      output.message = 'Enter number of shrimp post-larvae stocked.';
+      output.message_mr = 'साठवणूक केलेल्या कोळंबीची संख्या भरा.';
+      return output;
+    }
+
+    if (isNaN(numSurvival) || numSurvival <= 0 || numSurvival > 100) {
+      output.message = 'Survival percentage must be between 1% and 100%.';
+      output.message_mr = 'जिवंत राहण्याचे प्रमाण १% ते १००% दरम्यान असावे.';
+      return output;
+    }
+
+    // Check culture age in days
+    if (cultureAge === null || cultureAge === '' || cultureAge === undefined || isNaN(Number(cultureAge))) {
+      output.isIncomplete = true;
+      output.message = 'Enter culture age in days (1–120 days) to determine reference feeding rate.';
+      output.message_mr = 'संदर्भ खाद्य दर निश्चित करण्यासाठी संवर्धन दिवस (१–१२० दिवस) भरा.';
+      return output;
+    }
+
+    const ageDays = Number(cultureAge);
+    if (ageDays < 1 || ageDays > 120) {
+      output.specialStatus = 'NO_RULE';
+      output.message = `Reference feeding rate unavailable: Culture age (${ageDays} days) falls outside the reference table (1–120 days). Enter a verified farm protocol rate.`;
+      output.message_mr = `संदर्भ खाद्य दर उपलब्ध नाही: संवर्धन वय (${ageDays} दिवस) संदर्भ तक्त्याबाहेर (१–१२० दिवस) आहे. प्रमाणित संवर्धन दर स्वतः भरा.`;
+      return output;
+    }
+
+    const scheduleItem = VANNAMEI_FEEDING_SCHEDULE.find((item) => ageDays >= item.min_day && ageDays <= item.max_day);
+    if (!scheduleItem) {
+      output.specialStatus = 'NO_RULE';
+      output.message = `Reference feeding rate unavailable for day ${ageDays}.`;
+      output.message_mr = `दिवस ${ageDays} साठी संदर्भ दर उपलब्ध नाही.`;
+      return output;
+    }
+
+    // Determine average weight
+    let effectiveWeight = numWeight;
+    if (!effectiveWeight || isNaN(effectiveWeight) || effectiveWeight <= 0) {
+      if (!scheduleItem.is_range && scheduleItem.ref_weight) {
+        effectiveWeight = scheduleItem.ref_weight;
+      } else {
+        output.isIncomplete = true;
+        output.message = `Average shrimp weight in grams is required for culture days 1–7 (Reference range: 0.02–0.4 g).`;
+        output.message_mr = `१–७ दिवसांसाठी सरासरी वजन (ग्रॅम) आवश्यक आहे (संदर्भ श्रेणी: ०.०२–०.४ ग्रॅम).`;
+        return output;
+      }
+    }
+
+    // Surviving shrimp & biomass calculation
+    const survivingShrimp = calculateSurvivingFish(numStocked, numSurvival);
+    const biomass = calculateBiomass(survivingShrimp, effectiveWeight);
+    output.survivingFish = survivingShrimp;
+    output.biomass = biomass;
+    output.biomassConsideration = 'Biomass consideration: Surviving shrimp = Stocked × Survival % ÷ 100; Biomass = Surviving shrimp × Avg Weight ÷ 1,000';
+    output.biomassConsideration_mr = 'बायोमास विचार: जिवंत कोळंबी = साठवणूक × सर्व्हायव्हल % ÷ १००; बायोमास = जिवंत कोळंबी × सरासरी वजन ÷ १,०००';
+    output.biomassFormulaStr = `Surviving: ${survivingShrimp.toLocaleString()} shrimp | Biomass: ${biomass.toFixed(2)} kg`;
+    output.biomassFormulaStr_mr = `जिवंत: ${survivingShrimp.toLocaleString()} कोळंबी | बायोमास: ${biomass.toFixed(2)} किलो`;
+
+    // Reference feeding rate determination
+    let effectiveRate = null;
+    if (scheduleItem.is_range) {
+      // Days 1–7: Range 60–35% BW/day. Never silently convert to fixed arbitrary percentage.
+      output.applicableRange = { min: scheduleItem.rate_min, max: scheduleItem.rate_max };
+      const numManual = Number(manualRate);
+      if (!manualRate || isNaN(numManual) || numManual <= 0) {
+        output.isIncomplete = true;
+        output.requiresManualRate = true;
+        output.message = 'Culture days 1–7 reference rate is 60–35% body weight/day. Please confirm or enter your feeding rate within or according to this reference.';
+        output.message_mr = '१–७ दिवसांसाठी संदर्भ दर ६०–३५% बायोमास/दिवस आहे. कृपया या संदर्भानुसार दर निवडा किंवा निश्चित करा.';
+        return output;
+      }
+      effectiveRate = numManual;
+      output.rateSource = 'FARMER_ENTERED';
+      output.feedingMode = 'MANUAL';
+      output.ruleExplanation = `Vannamei Days ${scheduleItem.min_day}–${scheduleItem.max_day} (Ref range: 60–35% BW/day) → Confirmed Rate: ${effectiveRate}% (Reference guidance)`;
+      output.ruleExplanation_mr = `व्हॅनामेई दिवस ${scheduleItem.min_day}–${scheduleItem.max_day} (संदर्भ श्रेणी: ६०–३५% बायोमास/दिवस) → निश्चित दर: ${effectiveRate}% (मार्गदर्शक संदर्भ)`;
+    } else {
+      // Days 8–120: Specific reference rate
+      output.applicableRange = { min: scheduleItem.rate, max: scheduleItem.rate };
+      if (manualRate !== null && manualRate !== '' && !isNaN(Number(manualRate)) && Number(manualRate) > 0) {
+        effectiveRate = Number(manualRate);
+        output.rateSource = 'FARMER_ENTERED';
+        output.feedingMode = 'MANUAL';
+        output.ruleExplanation = `Vannamei Day ${ageDays} (Ref: ${scheduleItem.rate}% BW/day, ${scheduleItem.ref_weight}g) → Farmer Overridden Rate: ${effectiveRate}%`;
+        output.ruleExplanation_mr = `व्हॅनामेई दिवस ${ageDays} (संदर्भ: ${scheduleItem.rate}%, ${scheduleItem.ref_weight} ग्रॅम) → शेतकऱ्याने निवडलेला दर: ${effectiveRate}%`;
+      } else {
+        effectiveRate = scheduleItem.rate;
+        output.rateSource = 'AUTOMATIC_RULE';
+        output.ruleExplanation = `Vannamei Day ${ageDays} Reference Table (Ref Avg Weight: ${scheduleItem.ref_weight}g) → Reference Feeding Rate: ${effectiveRate}% BW/day (Reference guidance)`;
+        output.ruleExplanation_mr = `व्हॅनामेई दिवस ${ageDays} संदर्भ तक्ता (संदर्भ वजन: ${scheduleItem.ref_weight} ग्रॅम) → संदर्भित खाद्य दर: ${effectiveRate}% बायोमास/दिवस (मार्गदर्शक संदर्भ)`;
+      }
+    }
+
+    output.feedingRate = effectiveRate;
+
+    // Reference Feed Required (kg/day)
+    const baseDailyFeed = calculateDailyFeed(biomass, effectiveRate);
+    output.dailyFeed = baseDailyFeed;
+    output.calculatedFeed = baseDailyFeed;
+    output.morningFeed = calculateMorningFeed(baseDailyFeed);
+    output.eveningFeed = calculateEveningFeed(baseDailyFeed);
+    output.feedCost = calculateFeedCost(baseDailyFeed, numPrice);
+    output.dailyFeedCost = output.feedCost;
+
+    // Feeding-Tray and Critical-Condition Guidance Evaluation
+    const trayObj = FEEDING_TRAY_OBSERVATIONS.find((o) => o.id === trayObservation) || FEEDING_TRAY_OBSERVATIONS[0];
+    const activeConditions = (criticalConditions || []).map((cid) => VANNAMEI_CRITICAL_CONDITIONS.find((c) => c.id === cid)).filter(Boolean);
+
+    // Prioritize most conservative appropriate action (no blind stacking)
+    let mostConservativeCondition = null;
+    if (activeConditions.length > 0) {
+      const sorted = [...activeConditions].sort((a, b) => a.priority - b.priority);
+      mostConservativeCondition = sorted[0];
+    }
+
+    let proposedFeed = baseDailyFeed;
+    let proposedPercentAdj = 0;
+    let adjustmentReason = '';
+    let adjustmentReason_mr = '';
+    let conditionAction = 'NONE';
+
+    if (mostConservativeCondition && mostConservativeCondition.reduction_percent === 100) {
+      proposedFeed = 0;
+      proposedPercentAdj = -100;
+      conditionAction = mostConservativeCondition.action;
+      adjustmentReason = `Critical condition priority: ${mostConservativeCondition.label}. ${mostConservativeCondition.guidance}`;
+      adjustmentReason_mr = `गंभीर परिस्थिती प्राधान्य: ${mostConservativeCondition.label_mr}. ${mostConservativeCondition.guidance_mr}`;
+    } else if (trayObj.id === 'large_remaining') {
+      proposedFeed = 0;
+      proposedPercentAdj = -100;
+      conditionAction = 'STOP_NEXT_MEAL';
+      adjustmentReason = `Tray observation: ${trayObj.label}. ${trayObj.vannamei_guidance}`;
+      adjustmentReason_mr = `खाद्य ट्रे निरीक्षण: ${trayObj.label_mr}. ${trayObj.vannamei_guidance_mr}`;
+    } else if (mostConservativeCondition && mostConservativeCondition.reduction_percent === 50) {
+      proposedFeed = baseDailyFeed * 0.5;
+      proposedPercentAdj = -50;
+      conditionAction = 'REDUCE_50';
+      adjustmentReason = `Critical condition priority: ${mostConservativeCondition.label}. ${mostConservativeCondition.guidance}`;
+      adjustmentReason_mr = `गंभीर परिस्थिती प्राधान्य: ${mostConservativeCondition.label_mr}. ${mostConservativeCondition.guidance_mr}`;
+    } else if (trayObj.id === 'moderate_remaining') {
+      proposedFeed = baseDailyFeed * 0.6;
+      proposedPercentAdj = -40;
+      conditionAction = 'REDUCE_30_50';
+      adjustmentReason = `Tray observation: ${trayObj.label}. ${trayObj.vannamei_guidance}`;
+      adjustmentReason_mr = `खाद्य ट्रे निरीक्षण: ${trayObj.label_mr}. ${trayObj.vannamei_guidance_mr}`;
+    } else if (mostConservativeCondition && mostConservativeCondition.reduction_percent <= 40) {
+      proposedFeed = baseDailyFeed * 0.6;
+      proposedPercentAdj = -40;
+      conditionAction = 'REDUCE_30_50';
+      adjustmentReason = `Critical condition priority: ${mostConservativeCondition.label}. ${mostConservativeCondition.guidance}`;
+      adjustmentReason_mr = `गंभीर परिस्थिती प्राधान्य: ${mostConservativeCondition.label_mr}. ${mostConservativeCondition.guidance_mr}`;
+    } else if (trayObj.id === 'small_remaining') {
+      proposedFeed = baseDailyFeed * 0.85;
+      proposedPercentAdj = -15;
+      conditionAction = 'REDUCE_10_20';
+      adjustmentReason = `Tray observation: ${trayObj.label}. ${trayObj.vannamei_guidance}`;
+      adjustmentReason_mr = `खाद्य ट्रे निरीक्षण: ${trayObj.label_mr}. ${trayObj.vannamei_guidance_mr}`;
+    } else if (trayObj.id === 'consumed') {
+      proposedFeed = baseDailyFeed * 1.075;
+      proposedPercentAdj = 7.5;
+      conditionAction = 'INCREASE_5_10';
+      adjustmentReason = `Tray observation: ${trayObj.label}. ${trayObj.vannamei_guidance}`;
+      adjustmentReason_mr = `खाद्य ट्रे निरीक्षण: ${trayObj.label_mr}. ${trayObj.vannamei_guidance_mr}`;
+    }
+
+    output.proposedAdjustment = {
+      action: conditionAction,
+      percent: proposedPercentAdj,
+      proposedFeed: Number(proposedFeed.toFixed(3)),
+      reason: adjustmentReason,
+      reason_mr: adjustmentReason_mr,
+      trayGuidance: trayObj.vannamei_guidance,
+      trayGuidance_mr: trayObj.vannamei_guidance_mr,
+      activeConditionsCount: activeConditions.length,
+    };
+
+    output.isValid = true;
+    return output;
+  }
+
+  // ===============================================================
+  // FEATURE 2: GIANT FRESHWATER PRAWN (Macrobrachium rosenbergii)
+  // Source: FAO Fisheries Technical Paper 428
+  // Separate rules from Vannamei and finfish.
+  // ===============================================================
+  if (isFreshwaterPrawn) {
+    output.scientific_name = 'Macrobrachium rosenbergii';
+    output.category = 'Freshwater crustacean';
+    output.warningType = 'FRESHWATER_PRAWN';
+    output.biomassBasis = 'NORMAL_SURVIVAL_WEIGHT';
+    output.feedingMethod = 'BIOMASS_PERCENT';
+    output.feedingMode = 'MANUAL';
+    output.rateSource = manualRate ? 'FARMER_ENTERED' : 'REFERENCE_ASSUMPTION';
+
+    output.generalWarning = 'FAO Freshwater Prawn Guidance: Adjust rates according to sampled size, feeding response, and water temperature. Fresh feed (trash fish, molluscs) moisture is not equivalent to dry pellets.';
+    output.generalWarning_mr = 'FAO महा-कोळंबी मार्गदर्शक: कोळंबीचा आकार, खाण्याचा प्रतिसाद आणि पाण्याचे तापमान यानुसार दर ठरवा. ताज्या ओल्या खाद्यामधील पाण्याचे प्रमाण (७०-८०%) सुक्या गोळी खाद्यासारखे नसते.';
+
+    const stageConfig = FRESHWATER_PRAWN_STAGES.find((s) => s.id === cultureStage) || FRESHWATER_PRAWN_STAGES[2]; // Default Grow-out
+
+    // A. Hatchery larvae stage
+    if (stageConfig.isHatchery) {
+      output.specialStatus = 'VERIFIED_PROTOCOL';
+      output.isIncomplete = true;
+      output.feedingMode = 'MANUAL';
+      output.feedingMethod = 'VERIFIED_PROTOCOL';
+      output.warningText = 'Hatchery feeding protocol required.\n\nLarval feeding follows specialized Zoea stages (I–XI) using Artemia nauplii and prepared egg custard/diet. Do not apply grow-out biomass percentages to hatchery larvae.';
+      output.warningText_mr = 'हॅचरी खाद्य पद्धत आवश्यक.\n\nअळ्यांच्या (झोइआ १-११) टप्प्यानुसार आर्टेमिया आणि विशेष अंड्याचे खाद्य वापरले जाते. अळ्यांना मुख्य संवर्धनाची बायोमास टक्केवारी लागू करू नका.';
+      output.message = 'Hatchery feeding protocol required. Do not apply grow-out biomass percentages to hatchery larvae.';
+      output.message_mr = 'हॅचरी खाद्य पद्धत आवश्यक. अळ्यांना ग्रो-आऊट बायोमास टक्केवारी लागू करू नका.';
+      return output;
+    }
+
+    // Required inputs for Nursery, Grow-out, Broodstock
+    if (!stocked || isNaN(numStocked) || numStocked <= 0) {
+      output.isIncomplete = true;
+      output.message = stageConfig.isBroodstock
+        ? 'Enter the number of broodstock prawns.'
+        : 'Enter the number of freshwater prawns stocked.';
+      output.message_mr = stageConfig.isBroodstock
+        ? 'ब्रूडस्टॉक कोळंबीची संख्या भरा.'
+        : 'साठवणूक केलेल्या महा-कोळंबीची संख्या भरा.';
+      return output;
+    }
+
+    if (isNaN(numSurvival) || numSurvival <= 0 || numSurvival > 100) {
+      output.message = 'Survival percentage must be between 1% and 100%.';
+      output.message_mr = 'जिवंत राहण्याचे प्रमाण १% ते १००% दरम्यान असावे.';
+      return output;
+    }
+
+    if (isNaN(numWeight) || numWeight <= 0) {
+      output.message = 'Average prawn weight in grams is required.';
+      output.message_mr = 'कोळंबीचे सरासरी वजन (ग्रॅम) आवश्यक आहे.';
+      return output;
+    }
+
+    const survivingPrawns = calculateSurvivingFish(numStocked, numSurvival);
+    const biomass = calculateBiomass(survivingPrawns, numWeight);
+    output.survivingFish = survivingPrawns;
+    output.biomass = biomass;
+    output.biomassConsideration = 'Biomass consideration: Surviving prawns = Stocked × Survival % ÷ 100; Biomass = Surviving prawns × Avg Weight ÷ 1,000';
+    output.biomassConsideration_mr = 'बायोमास विचार: जिवंत कोळंबी = साठवणूक × सर्व्हायव्हल % ÷ १००; बायोमास = जिवंत कोळंबी × सरासरी वजन ÷ १,०००';
+    output.biomassFormulaStr = `Surviving: ${survivingPrawns.toLocaleString()} prawns | Biomass: ${biomass.toFixed(2)} kg`;
+    output.biomassFormulaStr_mr = `जिवंत: ${survivingPrawns.toLocaleString()} कोळंबी | बायोमास: ${biomass.toFixed(2)} किलो`;
+
+    // B. Nursery post-larvae and juveniles
+    if (stageConfig.isNursery) {
+      output.applicableRange = { min: 10.0, max: 20.0 };
+      output.warningText = 'FAO Nursery Reference: Approximately 10–20% of total prawn biomass per day. Adjust according to observed consumption and local verified protocol.';
+      output.warningText_mr = 'FAO नर्सरी संदर्भ: एकूण बायोमासच्या अंदाजे १०–२०% दररोज. प्रत्यक्ष खाणे आणि स्थानिक प्रमाणित पद्धतीनुसार दर निवडा.';
+
+      const numManual = Number(manualRate);
+      if (!manualRate || isNaN(numManual) || numManual <= 0) {
+        output.isIncomplete = true;
+        output.requiresManualRate = true;
+        output.message = 'Broad FAO reference for Nursery post-larvae/juveniles is 10–20% biomass/day. Select or enter your verified nursery feeding rate.';
+        output.message_mr = 'नर्सरी पोस्ट-लार्व्हासाठी विस्तृत FAO संदर्भ दर १०–२०% बायोमास/दिवस आहे. स्थानिक प्रमाणित पद्धतीनुसार दर निवडा किंवा निश्चित करा.';
+        return output;
+      }
+
+      output.feedingRate = numManual;
+      output.ruleExplanation = `M. rosenbergii Nursery (FAO Reference: 10–20% BW/day) → Selected Rate: ${numManual}% (Farmer confirmed)`;
+      output.ruleExplanation_mr = `महा-कोळंबी नर्सरी (FAO संदर्भ: १०–२०% बायोमास/दिवस) → निवडलेला दर: ${numManual}% (शेतकऱ्याने निश्चित केलेला)`;
+    } else if (stageConfig.isBroodstock) {
+      // D. Broodstock
+      output.applicableRange = { min: 1.0, max: 3.0 };
+      output.warningText = 'FAO Broodstock Reference: 1–3% of total biomass per day.\n\nNote: Fresh feed (trash fish, squid, mussel) moisture is approx 70–80%, compared to 10% in dry pellets. Do not assume fresh-feed weight is equivalent to dry pellet weight.';
+      output.warningText_mr = 'FAO ब्रूडस्टॉक संदर्भ: १–३% बायोमास/दिवस.\n\nटीप: ताज्या खाद्यामध्ये ७०–८०% पाणी असते; ताज्या खाद्याचे वजन सुक्या गोळी खाद्यासारखे समजू नका.';
+
+      const numManual = Number(manualRate);
+      if (!manualRate || isNaN(numManual) || numManual <= 0) {
+        output.isIncomplete = true;
+        output.requiresManualRate = true;
+        output.message = 'FAO Broodstock reference is 1–3% biomass/day. Confirm selected rate or use verified farm protocol.';
+        output.message_mr = 'ब्रूडस्टॉकसाठी FAO संदर्भ दर १–३% बायोमास/दिवस आहे. तुमचा दर निश्चित करा किंवा प्रमाणित पद्धत वापरा.';
+        return output;
+      }
+
+      output.feedingRate = numManual;
+      output.ruleExplanation = `M. rosenbergii Broodstock (FAO Ref: 1–3% BW/day, Feed type: ${feedType}) → Confirmed Rate: ${numManual}%`;
+      output.ruleExplanation_mr = `महा-कोळंबी ब्रूडस्टॉक (FAO संदर्भ: १–३%, खाद्य प्रकार: ${feedType}) → निश्चित दर: ${numManual}%`;
+    } else {
+      // C. Grow-out
+      output.applicableRange = { min: 2.0, max: 20.0 };
+      output.warningText = 'Broad FAO Grow-out Reference: Smaller juveniles ~10–20% biomass/day; progressively lower rates as size increases; near harvest ~2% may be reached. Confirm rate for current size.';
+      output.warningText_mr = 'विस्तृत FAO ग्रो-आऊट संदर्भ: लहान पिले ~१०–२०%; वाढीनुसार दर कमी; काढणीजवळ ~२% दर. सध्याच्या कोळंबीच्या आकारानुसार दर निश्चित करा.';
+
+      const numManual = Number(manualRate);
+      if (!manualRate || isNaN(numManual) || numManual <= 0) {
+        output.isIncomplete = true;
+        output.requiresManualRate = true;
+        output.message = 'FAO Grow-out reference: smaller juveniles ~10–20% biomass/day; larger prawns progressively lower; near harvest ~2%. Please enter or confirm feeding rate for your prawn size.';
+        output.message_mr = 'FAO ग्रो-आऊट संदर्भ: लहान पिले ~१०–२०% बायोमास/दिवस; मोठी कोळंबी कमी दर; काढणीजवळ ~२%. तुमच्या कोळंबीच्या आकारानुसार दर निश्चित करा.';
+        return output;
+      }
+
+      output.feedingRate = numManual;
+      output.ruleExplanation = `M. rosenbergii Grow-out (Avg weight: ${numWeight}g) → Farmer Confirmed Rate: ${numManual}% BW/day (FAO Guidance)`;
+      output.ruleExplanation_mr = `महा-कोळंबी ग्रो-आऊट (सरासरी वजन: ${numWeight} ग्रॅम) → शेतकऱ्याने निश्चित केलेला दर: ${numManual}% (FAO संदर्भ)`;
+    }
+
+    const dailyFeed = calculateDailyFeed(biomass, output.feedingRate);
+    output.dailyFeed = dailyFeed;
+    output.calculatedFeed = dailyFeed;
+    output.morningFeed = calculateMorningFeed(dailyFeed);
+    output.eveningFeed = calculateEveningFeed(dailyFeed);
+    output.feedCost = calculateFeedCost(dailyFeed, numPrice);
+    output.dailyFeedCost = output.feedCost;
+
+    // Freshwater Prawn Tray Management guidance (Section 10)
+    const trayObj = FEEDING_TRAY_OBSERVATIONS.find((o) => o.id === trayObservation) || FEEDING_TRAY_OBSERVATIONS[0];
+    output.proposedAdjustment = {
+      action: trayObj.id,
+      trayGuidance: trayObj.prawn_guidance,
+      trayGuidance_mr: trayObj.prawn_guidance_mr,
+      proposedFeed: dailyFeed, // Farmer must review and confirm
+      note: 'Do not automatically reuse Vannamei percentage adjustments. Confirm final quantity using verified prawn protocol.',
+      note_mr: 'व्हॅनामेईचे टक्केवारी बदल महा-कोळंबीसाठी थेट लागू करू नका. प्रमाणित पद्धतीनुसार अंतिम प्रमाण निश्चित करा.',
+    };
+
+    output.isValid = true;
+    return output;
+  }
 
   // ===============================================================
   // 1. IMC NURSERY STAGE (SECTION 2 & 13)
@@ -139,6 +499,7 @@ export function calculateFeed(input, ruleOverride = null) {
     // Normal feed calculation formula (Biomass × Rate / 100)
     const dailyFeed = calculateDailyFeed(initialBiomass, numManualRate);
     output.dailyFeed = dailyFeed;
+    output.calculatedFeed = dailyFeed;
     output.morningFeed = calculateMorningFeed(dailyFeed);
     output.eveningFeed = calculateEveningFeed(dailyFeed);
     output.feedCost = calculateFeedCost(dailyFeed, numPrice);
@@ -218,6 +579,7 @@ export function calculateFeed(input, ruleOverride = null) {
 
     const dailyFeed = calculateDailyFeed(biomass, numManualRate);
     output.dailyFeed = dailyFeed;
+    output.calculatedFeed = dailyFeed;
     output.morningFeed = calculateMorningFeed(dailyFeed);
     output.eveningFeed = calculateEveningFeed(dailyFeed);
     output.feedCost = calculateFeedCost(dailyFeed, numPrice);
@@ -253,6 +615,7 @@ export function calculateFeed(input, ruleOverride = null) {
 
     const dailyFeed = calculateDailyFeed(biomass, numManualRate);
     output.dailyFeed = dailyFeed;
+    output.calculatedFeed = dailyFeed;
     output.morningFeed = calculateMorningFeed(dailyFeed);
     output.eveningFeed = calculateEveningFeed(dailyFeed);
     output.feedCost = calculateFeedCost(dailyFeed, numPrice);
@@ -288,6 +651,7 @@ export function calculateFeed(input, ruleOverride = null) {
 
     const dailyFeed = calculateDailyFeed(biomass, numManualRate);
     output.dailyFeed = dailyFeed;
+    output.calculatedFeed = dailyFeed;
     output.morningFeed = calculateMorningFeed(dailyFeed);
     output.eveningFeed = calculateEveningFeed(dailyFeed);
     output.feedCost = calculateFeedCost(dailyFeed, numPrice);
@@ -341,6 +705,7 @@ export function calculateFeed(input, ruleOverride = null) {
 
     const dailyFeed = calculateDailyFeed(biomass, numManualRate);
     output.dailyFeed = dailyFeed;
+    output.calculatedFeed = dailyFeed;
     output.morningFeed = calculateMorningFeed(dailyFeed);
     output.eveningFeed = calculateEveningFeed(dailyFeed);
     output.feedCost = calculateFeedCost(dailyFeed, numPrice);
@@ -381,6 +746,7 @@ export function calculateFeed(input, ruleOverride = null) {
 
     const dailyFeed = calculateDailyFeed(biomass, numManualRate);
     output.dailyFeed = dailyFeed;
+    output.calculatedFeed = dailyFeed;
     output.morningFeed = calculateMorningFeed(dailyFeed);
     output.eveningFeed = calculateEveningFeed(dailyFeed);
     output.feedCost = calculateFeedCost(dailyFeed, numPrice);
@@ -452,6 +818,7 @@ export function calculateFeed(input, ruleOverride = null) {
   // Compute Daily, Morning, Evening Feed, and Cost
   const dailyFeed = calculateDailyFeed(biomass, feedingRate);
   output.dailyFeed = dailyFeed;
+  output.calculatedFeed = dailyFeed;
   output.morningFeed = calculateMorningFeed(dailyFeed);
   output.eveningFeed = calculateEveningFeed(dailyFeed);
   output.feedCost = calculateFeedCost(dailyFeed, numPrice);
