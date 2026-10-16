@@ -405,29 +405,38 @@ export const FRESHWATER_PRAWN_STAGES = [
 // ==============================================================================
 // OBSERVATION METHODS & SPECIES MAPPING
 // ==============================================================================
-export const OBSERVATION_METHODS = {
-  FLOATING_FEED: 'FLOATING_FEED',
-  SUBMERGED_TRAY: 'SUBMERGED_TRAY',
-  SUSPENDED_TRAY: 'SUSPENDED_TRAY',
-  BOTTOM_TRAY: 'BOTTOM_TRAY',
-  GREEN_FODDER_FRAME: 'GREEN_FODDER_FRAME',
-  VANNAMEI_CHECK_TRAY: 'VANNAMEI_CHECK_TRAY',
-  PRAWN_FEED_TRAY: 'PRAWN_FEED_TRAY',
-};
+export const OBSERVATION_METHODS = [
+  { id: 'floating_feed', name: 'Floating Pellets (Surface)', name_mr: 'तरंगणाऱ्या गोळ्या (पृष्ठभाग)' },
+  { id: 'submerged_tray', name: 'Submerged Tray / Feeding Bag', name_mr: 'बुडवलेला ट्रे / खाद्य पिशवी' },
+  { id: 'suspended_tray', name: 'Mid-Water / Suspended Tray (Rohu)', name_mr: 'मध्य-स्तरावरील लटकवलेला ट्रे (रोहू)' },
+  { id: 'bottom_tray', name: 'Bottom Submerged Tray (Mrigal, Common Carp)', name_mr: 'तळातील बुडवलेला ट्रे (म्रिगल, कॉमन कार्प)' },
+  { id: 'green_fodder_frame', name: 'Green Fodder Floating Corral (Grass Carp)', name_mr: 'तरंगता हिरवा चारा कोठा (ग्रास कार्प)' },
+  { id: 'vannamei_check_tray', name: 'Vannamei Check-Tray Monitoring', name_mr: 'व्हॅनामेई चेक-ट्रे देखरेख' },
+  { id: 'prawn_feed_tray', name: 'Freshwater Prawn Feed Tray', name_mr: 'गोड्या पाण्यातील कोळंबी खाद्य ट्रे' },
+];
+
+// Attach property aliases for backward compatibility
+OBSERVATION_METHODS.FLOATING_FEED = 'floating_feed';
+OBSERVATION_METHODS.SUBMERGED_TRAY = 'submerged_tray';
+OBSERVATION_METHODS.SUSPENDED_TRAY = 'suspended_tray';
+OBSERVATION_METHODS.BOTTOM_TRAY = 'bottom_tray';
+OBSERVATION_METHODS.GREEN_FODDER_FRAME = 'green_fodder_frame';
+OBSERVATION_METHODS.VANNAMEI_CHECK_TRAY = 'vannamei_check_tray';
+OBSERVATION_METHODS.PRAWN_FEED_TRAY = 'prawn_feed_tray';
 
 export function getSpeciesDefaultObservationMethod(speciesId) {
   const sp = (speciesId || '').toLowerCase();
-  if (sp.includes('catla')) return OBSERVATION_METHODS.FLOATING_FEED;
-  if (sp.includes('tilapia')) return OBSERVATION_METHODS.FLOATING_FEED;
-  if (sp.includes('pangasius')) return OBSERVATION_METHODS.FLOATING_FEED;
-  if (sp.includes('rohu')) return OBSERVATION_METHODS.SUBMERGED_TRAY;
-  if (sp.includes('mrigal')) return OBSERVATION_METHODS.BOTTOM_TRAY;
-  if (sp.includes('common_carp') || sp.includes('common carp')) return OBSERVATION_METHODS.BOTTOM_TRAY;
-  if (sp.includes('magur')) return OBSERVATION_METHODS.SUBMERGED_TRAY;
-  if (sp.includes('grass_carp') || sp.includes('grass carp')) return OBSERVATION_METHODS.GREEN_FODDER_FRAME;
-  if (sp.includes('vannamei')) return OBSERVATION_METHODS.VANNAMEI_CHECK_TRAY;
-  if (sp.includes('prawn') || sp.includes('macrobrachium')) return OBSERVATION_METHODS.PRAWN_FEED_TRAY;
-  return OBSERVATION_METHODS.FLOATING_FEED;
+  if (sp.includes('catla')) return 'floating_feed';
+  if (sp.includes('tilapia')) return 'floating_feed';
+  if (sp.includes('pangasius')) return 'floating_feed';
+  if (sp.includes('rohu')) return 'submerged_tray';
+  if (sp.includes('mrigal')) return 'bottom_tray';
+  if (sp.includes('common_carp') || sp.includes('common carp')) return 'bottom_tray';
+  if (sp.includes('magur')) return 'submerged_tray';
+  if (sp.includes('grass_carp') || sp.includes('grass carp')) return 'green_fodder_frame';
+  if (sp.includes('vannamei')) return 'vannamei_check_tray';
+  if (sp.includes('prawn') || sp.includes('macrobrachium')) return 'prawn_feed_tray';
+  return 'floating_feed';
 }
 
 // ==============================================================================
