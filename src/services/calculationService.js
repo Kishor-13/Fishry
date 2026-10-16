@@ -14,7 +14,18 @@ import {
   VANNAMEI_FEEDING_SCHEDULE,
   FEEDING_TRAY_OBSERVATIONS,
   VANNAMEI_CRITICAL_CONDITIONS,
-  FRESHWATER_PRAWN_STAGES 
+  FRESHWATER_PRAWN_STAGES,
+  OBSERVATION_METHODS,
+  FLOATING_FEED_OBSERVATIONS,
+  SUBMERGED_TRAY_OBSERVATIONS,
+  GREEN_FODDER_OBSERVATIONS,
+  VANNAMEI_CHECK_TRAY_RATES,
+  VANNAMEI_INITIAL_RESPONSE_NOTE,
+  VANNAMEI_FAECAL_INDICATORS,
+  DEFAULT_SESSIONS,
+  VANNAMEI_SESSIONS,
+  TILAPIA_EXTENDED_SESSIONS,
+  ENVIRONMENTAL_CONFIG
 } from '../constants/speciesData.js';
 
 /**
@@ -827,3 +838,657 @@ export function calculateFeed(input, ruleOverride = null) {
 
   return output;
 }
+
+/**
+ * ==============================================================================
+ * ENVIRONMENTAL OVERRIDES EVALUATION (Section 4)
+ * Evaluates DO, water temperature, weather conditions, netting, and chemical treatments
+ * using a transparent safety hierarchy:
+ * 1. Critical distress or dangerous environmental warning.
+ * 2. Verified species-specific environmental protocol.
+ * 3. General environmental observation reduction.
+ * 4. Existing Fishry calculated feed requirement.
+ * ==============================================================================
+ */
+export function evaluateEnvironmentalOverrides({
+  species = '',
+  speciesId = '',
+  averageWeight = 0,
+  biomass = 0,
+  dissolvedOxygen = null,
+  isFishPiping = false,
+  waterTemperature = null,
+  weatherCondition = 'normal', // 'normal' | 'overcast_rain' | 'overcast_heavy_rain'
+  handlingCondition = 'none', // 'none' | 'post_handling' | 'recently_netted'
+  isChemicalTreatment = false,
+}) {
+  const sp = species || speciesId || '';
+  const spLower = sp.toLowerCase();
+  const isMagur = spLower.includes('magur');
+  const isTilapia = spLower.includes('tilapia');
+  const isPangasius = spLower.includes('pangasius');
+  const isCarp = ['rohu', 'catla', 'mrigal', 'common_carp', 'common carp', 'grass_carp', 'grass carp'].some(c => spLower.includes(c));
+
+  const hasDO = dissolvedOxygen !== null && dissolvedOxygen !== '' && !isNaN(Number(dissolvedOxygen));
+  const numDO = hasDO ? Number(dissolvedOxygen) : null;
+
+  const hasTemp = waterTemperature !== null && waterTemperature !== '' && !isNaN(Number(waterTemperature));
+  const numTemp = hasTemp ? Number(waterTemperature) : null;
+
+  const isOvercast = weatherCondition === 'overcast_rain' || weatherCondition === 'overcast_heavy_rain';
+  const isPostHandling = handlingCondition === 'post_handling' || handlingCondition === 'recently_netted';
+
+  const hasAnyInput = hasDO || hasTemp || isFishPiping || isOvercast || isPostHandling || isChemicalTreatment;
+
+  if (!hasAnyInput) {
+    return {
+      hasData: false,
+      hasOverride: false,
+      isOverrideApplied: false,
+      hierarchyLevel: 4,
+      action: 'NONE',
+      reductionPercent: 0,
+      adjustmentPercent: 0,
+      code: 'NORMAL',
+      reason: 'No environmental override was applied. Continue with standard calculated ration.',
+      reason_mr: 'कोणताही पर्यावरणीय बदल लागू केलेला नाही. प्रमाणित गणनेनुसार खाद्य सुरू ठेवा.',
+      activeConditions: [],
+      warnings: [],
+      warnings_mr: [],
+    };
+  }
+
+  const warnings = [];
+  const warnings_mr = [];
+  const activeConditions = [];
+
+  // ==============================================================================
+  // HIERARCHY LEVEL 1: CRITICAL DISTRESS OR DANGEROUS ENVIRONMENTAL WARNINGS
+  // ==============================================================================
+
+  // 1.1 Fish gasping / piping at surface
+  if (isFishPiping) {
+    activeConditions.push({
+      id: 'fish_piping_distress',
+      level: 1,
+      label: 'Fish gasping / piping at surface (Severe oxygen distress)',
+      label_mr: 'मासे पृष्ठभागावर येऊन धापा टाकत आहेत (तीव्र ऑक्सिजन ताण)',
+      reductionPercent: 100,
+    });
+    return {
+      hasData: true,
+      hasOverride: true,
+      isOverrideApplied: true,
+      isCritical: true,
+      hierarchyLevel: 1,
+      action: 'STOP_MEAL',
+      reductionPercent: 100,
+      adjustmentPercent: -100,
+      code: 'CRITICAL_OXYGEN_DISTRESS',
+      reason: 'CRITICAL OXYGEN DISTRESS: Fish gasping or piping at surface. Stop feeding immediately, start emergency aeration, and assess pond water quality.',
+      reason_mr: 'गंभीर ऑक्सिजन ताण: मासे पृष्ठभागावर येऊन धापा टाकत आहेत. तात्काळ खाद्य देणे थांबवा, तातडीने वायुवीजन (aeration) सुरू करा आणि पाण्याची गुणवत्ता तपासा.',
+      activeConditions,
+      warnings: ['Stop feeding until oxygen levels recover above 5.0 mg/L and fish stop piping.'],
+      warnings_mr: ['ऑक्सिजन ५.० mg/L पेक्षा जास्त होईपर्यंत व मासे सामान्य होईपर्यंत खाद्य पूर्णपणे बंद ठेवा.'],
+    };
+  }
+
+  // 1.2 DO below 3.0 mg/L (with Magur protocol exception if NO distress)
+  if (hasDO && numDO < 3.0) {
+    // Safety check: Magur exception is strictly NOT applied if severe distress is flagged
+    if (isMagur && numDO < 2.0) {
+      activeConditions.push({
+        id: 'magur_low_do',
+        level: 2,
+        label: 'Magur accessory air-breathing tolerance (DO < 2.0 mg/L)',
+        label_mr: 'मागूर अतिरिक्त श्वसन अवयव सहनशीलता (DO < २.० mg/L)',
+        reductionPercent: 30,
+      });
+      // Magur exception: below 2.0 mg/L propose a 30% reduction instead of treating as ordinary finfish
+      return {
+        hasData: true,
+        hasOverride: true,
+        isOverrideApplied: true,
+        isCritical: false,
+        hierarchyLevel: 2,
+        action: 'REDUCE_30',
+        reductionPercent: 30,
+        adjustmentPercent: -30,
+        code: 'MAGUR_LOW_DO_EXCEPTION',
+        reason: 'Magur species-specific protocol: Clarias batrachus possesses an accessory air-breathing organ. At DO < 2.0 mg/L (without surface distress), propose a 30% reduction with close observation.',
+        reason_mr: 'मागूर विशेष पद्धत: मागूर माशामध्ये अतिरिक्त श्वसन अवयव असतो. DO < २.० mg/L असताना (तीव्र ताण नसल्यास) ३०% कपात सुचवली जाते. बारकाईने लक्ष ठेवा.',
+        activeConditions,
+        warnings: ['Monitor aeration and water exchange. If Magur shows lethargy or distress, stop feeding immediately.'],
+        warnings_mr: ['वायुवीजन तपासा. मागूर सुस्त दिसल्यास तात्काळ खाद्य देणे थांबवा.'],
+      };
+    } else if (isMagur && numDO >= 2.0 && numDO < 3.0) {
+      activeConditions.push({
+        id: 'magur_moderate_do',
+        level: 2,
+        label: 'Magur moderate DO reduction (2.0–3.0 mg/L)',
+        label_mr: 'मागूर मध्यम DO कपात (२.०–३.० mg/L)',
+        reductionPercent: 20,
+      });
+      return {
+        hasData: true,
+        hasOverride: true,
+        isOverrideApplied: true,
+        isCritical: false,
+        hierarchyLevel: 2,
+        action: 'REDUCE_20',
+        reductionPercent: 20,
+        adjustmentPercent: -20,
+        code: 'MAGUR_MODERATE_DO',
+        reason: 'Magur species-specific protocol: DO 2.0–3.0 mg/L. Propose reviewing a 20% reduction and monitoring pond bottom.',
+        reason_mr: 'मागूर विशेष पद्धत: DO २.०–३.० mg/L. २०% कपातीचा विचार करा आणि तळ्याचा तळ तपासा.',
+        activeConditions,
+        warnings: ['Ensure uneaten high-protein sinking feed is removed.'],
+        warnings_mr: ['शिल्लक राहिलेले उच्च प्रथिनांचे खाद्य काढून घ्या.'],
+      };
+    } else {
+      // Ordinary finfish critical stop
+      activeConditions.push({
+        id: 'critical_low_do',
+        level: 1,
+        label: `Critical low dissolved oxygen (${numDO.toFixed(1)} mg/L < 3.0 mg/L)`,
+        label_mr: `अत्यंत कमी विरघळलेला ऑक्सिजन (${numDO.toFixed(1)} mg/L < ३.० mg/L)`,
+        reductionPercent: 100,
+      });
+      return {
+        hasData: true,
+        hasOverride: true,
+        isOverrideApplied: true,
+        isCritical: true,
+        hierarchyLevel: 1,
+        action: 'STOP_MEAL',
+        reductionPercent: 100,
+        adjustmentPercent: -100,
+        code: 'CRITICAL_LOW_DO',
+        reason: `CRITICAL LOW DISSOLVED OXYGEN (${numDO.toFixed(1)} mg/L < 3.0 mg/L). Recommend stopping feeding temporarily while addressing the oxygen problem; start emergency aeration.`,
+        reason_mr: `अत्यंत कमी ऑक्सिजन (${numDO.toFixed(1)} mg/L < ३.० mg/L). खाद्य तात्पुरते पूर्णपणे थांबवा आणि तात्काळ वायुवीजन (aeration) सुरू करा.`,
+        activeConditions,
+        warnings: ['Do not feed during low dissolved oxygen to prevent ammonia spikes and fish mortality.'],
+        warnings_mr: ['अमोनिया वाढणे व मासे मरणे टाळण्यासाठी कमी ऑक्सिजन असताना खाद्य देऊ नका.'],
+      };
+    }
+  }
+
+  // 1.3 Critical Cold (< 14°C) for warm-water species (Tilapia & Pangasius)
+  if (hasTemp && numTemp < 14.0 && (isTilapia || isPangasius)) {
+    activeConditions.push({
+      id: 'critical_cold_warmwater',
+      level: 1,
+      label: `Critical low temperature (${numTemp.toFixed(1)}°C < 14°C) for ${sp}`,
+      label_mr: `${sp} साठी अत्यंत कमी तापमान (${numTemp.toFixed(1)}°C < १४°C)`,
+      reductionPercent: 100,
+    });
+    return {
+      hasData: true,
+      hasOverride: true,
+      isOverrideApplied: true,
+      isCritical: true,
+      hierarchyLevel: 1,
+      action: 'STOP_MEAL',
+      reductionPercent: 100,
+      adjustmentPercent: -100,
+      code: 'CRITICAL_COLD_WARMWATER',
+      reason: `CRITICAL COLD TEMPERATURE (${numTemp.toFixed(1)}°C < 14°C): Tilapia and Pangasius stop digesting below 14°C. Halt feeding completely to prevent gut infection and mortality.`,
+      reason_mr: `अत्यंत थंड पाणी (${numTemp.toFixed(1)}°C < १४°C): १४°C पेक्षा कमी तापमानात तिलापिया व पंगासियस पचन करू शकत नाहीत. खाद्य पूर्णपणे बंद ठेवा.`,
+      activeConditions,
+      warnings: ['Resume feeding only when water temperature rises consistently above 18–20°C.'],
+      warnings_mr: ['पाण्याचे तापमान १८–२०°C च्या वर स्थिर होईपर्यंत खाद्य देऊ नका.'],
+    };
+  }
+
+  // ==============================================================================
+  // HIERARCHY LEVEL 2: VERIFIED SPECIES-SPECIFIC PROTOCOLS (Carps Cold Maintenance)
+  // ==============================================================================
+  if (hasTemp && numTemp < 14.0 && isCarp) {
+    activeConditions.push({
+      id: 'carp_cold_maintenance',
+      level: 2,
+      label: `Winter maintenance diet (< 14°C) for ${sp}`,
+      label_mr: `${sp} साठी हिवाळी देखभाल आहार (< १४°C)`,
+      reductionPercent: null,
+      maintenanceRate: 0.5,
+    });
+    return {
+      hasData: true,
+      hasOverride: true,
+      isOverrideApplied: true,
+      isCritical: false,
+      isCarpMaintenance: true,
+      hierarchyLevel: 2,
+      action: 'CARP_MAINTENANCE_DIET',
+      maintenanceRate: 0.5,
+      frequency: 'once every 2–3 days',
+      code: 'COLD_CARP_MAINTENANCE',
+      reductionPercent: 0,
+      adjustmentPercent: 0,
+      reason: `WINTER CARP PROTOCOL (< 14°C): Metabolic activity is severely depressed. Propose maintenance diet of 0.5% body weight once every 2–3 days rather than daily feeding.`,
+      reason_mr: `हिवाळी कार्प पद्धत (< १४°C): चयापचय मंदावला आहे. दररोज खाद्य देण्याऐवजी दर २–३ दिवसांनी एकदा बायोमासच्या ०.५% देखभाल आहार देण्याचा विचार करा.`,
+      activeConditions,
+      warnings: ['Feed only during the warmest midday period (12:00 PM – 2:00 PM). Remove any uneaten feed after 1 hour.'],
+      warnings_mr: ['केवळ दिवसाच्या सर्वात उबदार वेळेत (दुपारी १२:०० ते २:००) खाद्य द्या. १ तासानंतर शिल्लक खाद्य काढून घ्या.'],
+    };
+  }
+
+  // ==============================================================================
+  // HIERARCHY LEVEL 3: GENERAL ENVIRONMENTAL OVERRIDES & WEATHER
+  // Select the most conservative appropriate action without blind stacking.
+  // ==============================================================================
+
+  let maxReduction = 0;
+  let primaryReason = '';
+  let primaryReason_mr = '';
+  let appliedHierarchy = 3;
+  let specialCode = null;
+
+  // 3.1 Dissolved Oxygen stress (3.0 to 5.0 mg/L)
+  if (hasDO && numDO >= 3.0 && numDO <= 5.0) {
+    const doReduction = 35; // Propose reviewing 25–50% reduction
+    activeConditions.push({
+      id: 'do_stress_3_to_5',
+      level: 3,
+      label: `Dissolved oxygen stress (${numDO.toFixed(1)} mg/L, 3.0–5.0 mg/L range)`,
+      label_mr: `ऑक्सिजन ताण (${numDO.toFixed(1)} mg/L, ३.०–५.० mg/L श्रेणी)`,
+      reductionPercent: doReduction,
+    });
+    if (doReduction > maxReduction) {
+      maxReduction = doReduction;
+      primaryReason = `Dissolved oxygen stress (${numDO.toFixed(1)} mg/L in 3.0–5.0 mg/L range): Flag oxygen stress and propose reviewing a 25–50% reduction. Increase pond aeration.`;
+      primaryReason_mr = `ऑक्सिजन ताण (${numDO.toFixed(1)} mg/L): ऑक्सिजनचा ताण असल्याने २५–५०% कपात करण्याचा विचार करा आणि तळ्याचे वायुवीजन वाढवा.`;
+    }
+  }
+
+  // 3.2 Temperature: Above 32°C
+  if (hasTemp && numTemp > 32.0) {
+    const highTempReduction = 25; // 20–30% reduction proposed
+    activeConditions.push({
+      id: 'temp_above_32',
+      level: 3,
+      label: `High water temperature (${numTemp.toFixed(1)}°C > 32°C)`,
+      label_mr: `जास्त पाण्याचे तापमान (${numTemp.toFixed(1)}°C > ३२°C)`,
+      reductionPercent: highTempReduction,
+    });
+    if (highTempReduction > maxReduction) {
+      maxReduction = highTempReduction;
+      primaryReason = `High water temperature (${numTemp.toFixed(1)}°C > 32°C): Thermal stress reduces appetite and oxygen solubility. Propose reviewing a 20–30% reduction.`;
+      primaryReason_mr = `जास्त तापमान (${numTemp.toFixed(1)}°C > ३२°C): उष्णतेमुळे भूक व ऑक्सिजन विद्राव्यता कमी होते. २०–३०% कपातीचा विचार करा.`;
+    }
+  }
+
+  // 3.3 Temperature: 20–25°C
+  if (hasTemp && numTemp >= 20.0 && numTemp <= 25.0) {
+    const coolTempReduction = 30; // 25–40% reduction proposed
+    activeConditions.push({
+      id: 'temp_20_to_25',
+      level: 3,
+      label: `Suboptimal cooler temperature (${numTemp.toFixed(1)}°C, 20–25°C range)`,
+      label_mr: `थंड पाण्याचे तापमान (${numTemp.toFixed(1)}°C, २०–२५°C श्रेणी)`,
+      reductionPercent: coolTempReduction,
+    });
+    if (coolTempReduction > maxReduction) {
+      maxReduction = coolTempReduction;
+      primaryReason = `Suboptimal cooler water temperature (${numTemp.toFixed(1)}°C in 20–25°C range): Propose reviewing a 25–40% reduction due to lowered metabolic rate.`;
+      primaryReason_mr = `थंड तापमान (${numTemp.toFixed(1)}°C): चयापचय मंदावल्यामुळे २५–४०% कपातीचा विचार करा.`;
+    }
+  }
+
+  // 3.4 Temperature: 15–20°C
+  if (hasTemp && numTemp >= 15.0 && numTemp < 20.0) {
+    const coldTempReduction = 60; // 50–75% reduction proposed
+    activeConditions.push({
+      id: 'temp_15_to_20',
+      level: 3,
+      label: `Moderate low temperature (${numTemp.toFixed(1)}°C, 15–20°C range)`,
+      label_mr: `मध्यम कमी तापमान (${numTemp.toFixed(1)}°C, १५–२०°C श्रेणी)`,
+      reductionPercent: coldTempReduction,
+    });
+    if (coldTempReduction > maxReduction) {
+      maxReduction = coldTempReduction;
+      primaryReason = `Moderate low water temperature (${numTemp.toFixed(1)}°C in 15–20°C range): Propose reviewing a 50–75% reduction. Display warmest-hours schedule (feed during 12:00 PM – 2:00 PM).`;
+      primaryReason_mr = `कमी पाण्याचे तापमान (${numTemp.toFixed(1)}°C): ५०–७५% कपातीचा विचार करा. केवळ दिवसाच्या सर्वात उबदार वेळेत (दुपारी १२:०० ते २:००) खाद्य द्या.`;
+    }
+    warnings.push(ENVIRONMENTAL_CONFIG.WARMEST_HOURS_GUIDANCE.en);
+    warnings_mr.push(ENVIRONMENTAL_CONFIG.WARMEST_HOURS_GUIDANCE.mr);
+  }
+
+  // 3.5 Temperature Boundary / Gap Uncertainty Warning (without inventing arbitrary thresholds)
+  if (hasTemp && ((numTemp > 31.0 && numTemp <= 32.0) || (numTemp >= 14.0 && numTemp < 15.0) || (numTemp > 25.0 && numTemp < 26.0))) {
+    warnings.push(`Temperature (${numTemp.toFixed(1)}°C) falls on a transition boundary between reference brackets. Monitor actual feeding response closely without forcing an automatic extra threshold.`);
+    warnings_mr.push(`तापमान (${numTemp.toFixed(1)}°C) संदर्भ श्रेणींच्या सीमेवर आहे. कोणताही कृत्रिम दर लागू न करता माशांचा प्रत्यक्ष प्रतिसाद तपासा.`);
+  }
+
+  // 3.6 Continuous overcast or heavy rain
+  if (isOvercast) {
+    const rainReduction = 50;
+    activeConditions.push({
+      id: 'overcast_heavy_rain',
+      level: 3,
+      label: 'Continuous overcast conditions / heavy rain',
+      label_mr: 'सतत ढगाळ वातावरण / मुसळधार पाऊस',
+      reductionPercent: rainReduction,
+    });
+    if (rainReduction > maxReduction) {
+      maxReduction = rainReduction;
+      primaryReason = 'Continuous overcast conditions or heavy rain: Photosynthesis and appetite are significantly reduced. Consider a 50% reduction or temporary cancellation when justified by pond conditions.';
+      primaryReason_mr = 'सतत ढगाळ हवामान किंवा मुसळधार पाऊस: प्रकाशसंश्लेषण आणि खाण्याचा प्रतिसाद कमी होतो. ५०% कपात किंवा सदर वेळेचे जेवण रद्द करण्याचा विचार करा.';
+    }
+  }
+
+  // 3.7 Post-handling / sampling fasting guidance (reviewable reference, not automatic command)
+  if (isPostHandling) {
+    activeConditions.push({
+      id: 'post_handling_fasting',
+      level: 3,
+      label: 'Post-netting / sampling / harvest handling',
+      label_mr: 'जाळे ओढणे / नमुने तपासणे / काढणीनंतर',
+      reductionPercent: 100,
+      isGuidanceOnly: true,
+    });
+    specialCode = 'HANDLING_FASTING_GUIDANCE';
+    warnings.push('Fasting guidance after netting, sampling, or harvesting: Withhold feed for 12–24 hours to allow fish recovery from handling stress (reviewable reference guidance).');
+    warnings_mr.push('जाळे ओढल्यानंतर किंवा हाताळणीनंतर उपवास मार्गदर्शन: हाताळणीचा ताण कमी होण्यासाठी १२–२४ तास खाद्य न देण्याचा सल्ला दिला जातो (मार्गदर्शक संदर्भ).');
+  }
+
+  // 3.8 Chemical / therapeutic treatment in progress (proposed fasting rule for confirmation)
+  if (isChemicalTreatment) {
+    activeConditions.push({
+      id: 'chemical_treatment_fasting',
+      level: 3,
+      label: 'Chemical / therapeutic treatment in progress',
+      label_mr: 'औषध किंवा रासायनिक उपचार चालू असताना',
+      reductionPercent: 100,
+      isGuidanceOnly: true,
+    });
+    specialCode = 'TREATMENT_FASTING_GUIDANCE';
+    warnings.push('Therapeutic treatment fasting reference: Withholding feed during chemical or therapeutic application prevents feed degradation and water fouling. Confirm with qualified advisor.');
+    warnings_mr.push('उपचार उपवास संदर्भ: औषध किंवा रसायन उपचाराच्या वेळी खाद्य न दिल्यास पाणी खराब होत नाही. तज्ज्ञ सल्लागाराशी चर्चा करून अंतिम निर्णय घ्या.');
+  }
+
+  const hasOverride = maxReduction > 0 || isPostHandling || isChemicalTreatment;
+
+  // Return evaluated hierarchy result
+  return {
+    hasData: true,
+    hasOverride,
+    isOverrideApplied: hasOverride,
+    hierarchyLevel: appliedHierarchy,
+    action: maxReduction >= 100 ? 'STOP_MEAL' : (maxReduction > 0 ? `REDUCE_${maxReduction}` : (isPostHandling || isChemicalTreatment ? 'FASTING_GUIDANCE' : 'NONE')),
+    reductionPercent: maxReduction,
+    adjustmentPercent: maxReduction > 0 ? -maxReduction : 0,
+    code: specialCode || (maxReduction > 0 ? 'ENVIRONMENTAL_REDUCTION' : 'NORMAL'),
+    reason: primaryReason || 'Environmental parameters are within acceptable reference range (26–31°C, DO > 5.0 mg/L). Normal feeding may be considered.',
+    reason_mr: primaryReason_mr || 'पर्यावरणीय घटक सामान्य मर्यादेत आहेत (२६–३१°C, DO > ५.० mg/L). नेहमीप्रमाणे खाद्य देण्याचा विचार करावा.',
+    activeConditions,
+    warnings,
+    warnings_mr,
+  };
+}
+
+/**
+ * ==============================================================================
+ * VANNAMEI CHECK-TRAY CALCULATION (Section 6.C)
+ * Formula: Tray feed (g) = feed distributed in individual session (kg) × tray rate (g/kg).
+ * Sample feed is for monitoring only and is NOT extra feed added to pond daily ration.
+ * ==============================================================================
+ */
+export function calculateVannameiCheckTray(sessionFeedKg, averageWeightG) {
+  const feedKg = Number(sessionFeedKg);
+  const weight = Number(averageWeightG);
+
+  if (isNaN(feedKg) || feedKg <= 0 || isNaN(weight) || weight <= 0) {
+    return {
+      isValid: false,
+      trayFeedG: 0,
+      rateGPerKg: 0,
+      trayRatePerKg: 0,
+      checkingInterval: '—',
+      checkingMinutes: 0,
+      note: VANNAMEI_INITIAL_RESPONSE_NOTE.en,
+      note_mr: VANNAMEI_INITIAL_RESPONSE_NOTE.mr,
+      isMonitoringSampleOnly: true,
+    };
+  }
+
+  // Match bracket from reference table
+  let matchedRate = 3.0; // default safe fallback (9–13g)
+  let matchedInterval = '2 hours';
+  let matchedMinutes = 120;
+  let bracketWarning = null;
+
+  if (weight < 1.5) {
+    matchedRate = 1.0;
+    matchedInterval = '2 hours 30 minutes';
+    matchedMinutes = 150;
+    bracketWarning = 'Shrimp weight (< 1.5 g) is below reference tray table. Check-trays for small post-larvae should be used cautiously with 1.0 g/kg reference.';
+  } else if (weight >= 1.5 && weight <= 4.0) {
+    matchedRate = 1.0;
+    matchedInterval = '2 hours 30 minutes';
+    matchedMinutes = 150;
+  } else if (weight > 4.0 && weight < 5.0) {
+    // Gap guidance without inventing an unverified rate
+    matchedRate = 1.5; // Closest bracket guidance
+    matchedInterval = '2 hours';
+    matchedMinutes = 120;
+    bracketWarning = 'Shrimp weight (4.0–5.0 g) falls in the gap between brackets. Suggest 1.0–2.0 g/kg reference rate for checking.';
+  } else if (weight >= 5.0 && weight <= 8.0) {
+    matchedRate = 2.0;
+    matchedInterval = '2 hours';
+    matchedMinutes = 120;
+  } else if (weight > 8.0 && weight < 9.0) {
+    matchedRate = 2.5;
+    matchedInterval = '2 hours';
+    matchedMinutes = 120;
+    bracketWarning = 'Shrimp weight (8.0–9.0 g) falls in the gap between brackets. Suggest 2.0–3.0 g/kg reference rate.';
+  } else if (weight >= 9.0 && weight <= 13.0) {
+    matchedRate = 3.0;
+    matchedInterval = '2 hours';
+    matchedMinutes = 120;
+  } else if (weight > 13.0 && weight < 14.0) {
+    matchedRate = 3.5;
+    matchedInterval = '2 hours';
+    matchedMinutes = 120;
+    bracketWarning = 'Shrimp weight (13.0–14.0 g) falls in the gap between brackets. Suggest 3.0–4.0 g/kg reference rate.';
+  } else if (weight >= 14.0 && weight <= 22.0) {
+    matchedRate = 4.0;
+    matchedInterval = '2 hours';
+    matchedMinutes = 120;
+  } else if (weight > 22.0 && weight < 23.0) {
+    matchedRate = 4.5;
+    matchedInterval = '1 hour 30 minutes';
+    matchedMinutes = 90;
+    bracketWarning = 'Shrimp weight (22.0–23.0 g) falls in the gap between brackets. Suggest 4.0–5.0 g/kg reference rate.';
+  } else {
+    // 23.0g to 33.0g and above
+    matchedRate = 5.0;
+    matchedInterval = '1 hour 30 minutes';
+    matchedMinutes = 90;
+    if (weight > 33.0) {
+      bracketWarning = 'Shrimp weight (> 33.0 g) is at harvest size. Standard reference rate of 5.0 g/kg with 1.5-hour checking interval applies.';
+    }
+  }
+
+  // Tray feed (g) = session feed (kg) × tray rate (g/kg)
+  const trayFeedG = Number((feedKg * matchedRate).toFixed(1));
+
+  return {
+    isValid: true,
+    trayFeedG,
+    rateGPerKg: matchedRate,
+    trayRatePerKg: matchedRate,
+    checkingInterval: matchedInterval,
+    checkingMinutes: matchedMinutes,
+    bracketWarning,
+    note: VANNAMEI_INITIAL_RESPONSE_NOTE.en,
+    note_mr: VANNAMEI_INITIAL_RESPONSE_NOTE.mr,
+    isMonitoringSampleOnly: true,
+  };
+}
+
+/**
+ * ==============================================================================
+ * STRICT SESSION-WISE ADJUSTMENT LOOKUP (Section 3)
+ * Strict observation mapping:
+ * Day 1 morning observation -> Day 2 morning recommendation only.
+ * Day 1 evening observation -> Day 2 evening recommendation only.
+ * Vannamei: Day 1 7:00 AM -> Day 2 7:00 AM; 11 AM -> 11 AM; 4 PM -> 4 PM; 8 PM -> 8 PM.
+ * Magur: next-morning tray inspection is tied to previous evening feeding.
+ * Never cross-adjusts between sessions!
+ * ==============================================================================
+ */
+export function lookupPreviousSessionObservation(feedHistory = [], { pondId = null, species = '', session = 'morning' }) {
+  if (!feedHistory || feedHistory.length === 0) return null;
+
+  const spLower = (species || '').toLowerCase();
+
+  // Filter history for the exact same pond (or species if no pond)
+  const matchingRecords = feedHistory.filter((rec) => {
+    if (pondId && rec.pond_id) {
+      if (String(rec.pond_id) !== String(pondId)) return false;
+    } else if (species && rec.species) {
+      if (rec.species.toLowerCase() !== spLower) return false;
+    }
+    // Match exact session key
+    return rec.session === session;
+  });
+
+  if (matchingRecords.length === 0) return null;
+
+  // Most recent record for this exact session
+  const sorted = [...matchingRecords].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  const latestRec = sorted[0];
+
+  return {
+    date: latestRec.created_at,
+    session: latestRec.session,
+    species: latestRec.species,
+    observation_method: latestRec.observation_method,
+    observation: latestRec.observation || latestRec.tray_observation,
+    proposed_adjustment_percent: latestRec.proposed_adjustment_percent ?? 0,
+    observation_guidance: latestRec.observation_guidance || '',
+    observation_guidance_mr: latestRec.observation_guidance_mr || '',
+    relevant_feed_quantity: latestRec.confirmed_feed ?? latestRec.daily_feed,
+  };
+}
+
+/**
+ * ==============================================================================
+ * SESSION FEED PLAN CALCULATION (Section 5)
+ * Combines calculated daily baseline, session ratio, previous session observation,
+ * and environmental overrides under the strict safety hierarchy.
+ * Never allows session increase to exceed daily requirement.
+ * Does not silently increase other session to compensate.
+ * ==============================================================================
+ */
+export function calculateSessionFeedPlan({
+  dailyCalculatedKg = 0,
+  dailyBaseFeed = null,
+  sessionKey = 'morning',
+  session = null,
+  sessionSplitPercent = 50,
+  previousSessionObservation = null,
+  previousObservation = null,
+  environmentalOverride = null,
+  species = '',
+  speciesId = '',
+}) {
+  const dailyBase = Number(dailyBaseFeed !== null ? dailyBaseFeed : dailyCalculatedKg) || 0;
+  const sessKey = session || sessionKey || 'morning';
+  const prevObs = previousSessionObservation || previousObservation || null;
+  const env = environmentalOverride || null;
+
+  const ratio = (Number(sessionSplitPercent) || 50) / 100;
+  const sessionBaseline = Number((dailyBase * ratio).toFixed(3));
+
+  let proposedSessionFeed = sessionBaseline;
+  let activeAdjustmentPercent = 0;
+  let ruleSource = 'CALCULATED_BASELINE';
+  let explanation = `Session Baseline: ${sessionBaseline} kg (${sessionSplitPercent}% of daily ${dailyBase} kg)`;
+  let explanation_mr = `सत्राचे मूळ प्रमाण: ${sessionBaseline} किलो (दैनिक ${dailyBase} किलोच्या ${sessionSplitPercent}%)`;
+  let hierarchyApplied = 4; // Level 4 default
+
+  // 1. Check Environmental Overrides (Hierarchy Level 1 & 2 & 3)
+  const hasEnvOverride = env && (env.hasOverride || (env.hasData && env.isOverrideApplied));
+  if (hasEnvOverride) {
+    const isCritical = env.isCritical || env.reductionPercent >= 100 || env.adjustmentPercent <= -100;
+    if (isCritical) {
+      // Level 1: Critical distress stop
+      proposedSessionFeed = 0;
+      activeAdjustmentPercent = -100;
+      ruleSource = 'CRITICAL_ENVIRONMENTAL_STOP';
+      explanation = env.reason || 'Critical environmental condition detected. Stop feeding.';
+      explanation_mr = env.reason_mr || 'गंभीर पर्यावरणीय परिस्थिती. खाद्य तात्पुरते थांबवा.';
+      hierarchyApplied = 1;
+    } else if (env.isCarpMaintenance) {
+      // Level 2: Species-specific carp cold maintenance
+      ruleSource = 'CARP_COLD_MAINTENANCE';
+      explanation = env.reason;
+      explanation_mr = env.reason_mr;
+      hierarchyApplied = 2;
+    } else if ((env.reductionPercent && env.reductionPercent > 0) || (env.adjustmentPercent && env.adjustmentPercent < 0)) {
+      // Level 3: General environmental reduction
+      const red = env.reductionPercent || Math.abs(env.adjustmentPercent);
+      activeAdjustmentPercent = -red;
+      proposedSessionFeed = Number((sessionBaseline * (1 - red / 100)).toFixed(3));
+      ruleSource = 'ENVIRONMENTAL_OVERRIDE';
+      explanation = `Environmental Override Priority: ${env.reason || ''}`;
+      explanation_mr = `पर्यावरणीय प्राधान्य बदल: ${env.reason_mr || ''}`;
+      hierarchyApplied = 3;
+    }
+  }
+
+  // 2. If no critical environmental stop, apply previous matching session observation (Hierarchy Level 4)
+  if (hierarchyApplied >= 3 && prevObs && (prevObs.proposed_adjustment_percent !== undefined || prevObs.adjustmentPercent !== undefined)) {
+    const obsAdj = Number(prevObs.proposed_adjustment_percent !== undefined ? prevObs.proposed_adjustment_percent : prevObs.adjustmentPercent);
+    if (!isNaN(obsAdj) && obsAdj !== 0) {
+      if (hierarchyApplied === 3 && activeAdjustmentPercent < 0) {
+        // Both environmental reduction and observation adjustment present; pick more conservative
+        if (obsAdj < activeAdjustmentPercent) {
+          activeAdjustmentPercent = obsAdj;
+          proposedSessionFeed = obsAdj <= -100 ? 0 : Number((sessionBaseline * (1 + obsAdj / 100)).toFixed(3));
+          ruleSource = 'PREVIOUS_SESSION_OBSERVATION';
+          explanation = `Session Observation Priority: Previous matching ${sessKey} session observation suggested ${obsAdj}% adjustment.`;
+          explanation_mr = `सत्र निरीक्षण प्राधान्य: मागील संबंधित ${sessKey} सत्राच्या निरीक्षणानुसार ${obsAdj}% बदल सुचवला आहे.`;
+          hierarchyApplied = 4;
+        }
+      } else {
+        // Apply session observation
+        activeAdjustmentPercent = obsAdj;
+        hierarchyApplied = 4;
+        if (obsAdj <= -100) {
+          proposedSessionFeed = 0;
+        } else {
+          proposedSessionFeed = Number((sessionBaseline * (1 + obsAdj / 100)).toFixed(3));
+          // Safety cap: Never allow an observation-driven increase to exceed the calculated daily requirement
+          if (proposedSessionFeed > dailyBase) {
+            proposedSessionFeed = dailyBase;
+            explanation += ' (Capped at calculated daily requirement)';
+            explanation_mr += ' (गणना केलेल्या दैनिक कमाल मर्यादेपर्यंत मर्यादित)';
+          }
+        }
+        ruleSource = 'PREVIOUS_SESSION_OBSERVATION';
+        explanation = `Previous ${sessKey} observation suggested ${obsAdj > 0 ? '+' : ''}${obsAdj}% adjustment: ${prevObs.observation_guidance || prevObs.observation || ''}`;
+        explanation_mr = `मागील ${sessKey} सत्र निरीक्षणानुसार ${obsAdj > 0 ? '+' : ''}${obsAdj}% बदल: ${prevObs.observation_guidance_mr || ''}`;
+      }
+    }
+  }
+
+  return {
+    sessionKey: sessKey,
+    session: sessKey,
+    sessionBaseline,
+    baseSessionFeed: sessionBaseline,
+    proposedSessionFeed,
+    proposedQuantity: proposedSessionFeed,
+    activeAdjustmentPercent,
+    ruleSource,
+    explanation,
+    explanation_mr,
+    hierarchyApplied,
+    precedenceLevel: hierarchyApplied,
+    dailyCalculatedCap: dailyBase,
+  };
+}
+

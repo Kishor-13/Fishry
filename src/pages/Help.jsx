@@ -5,7 +5,9 @@ import {
   Thermometer, 
   ShieldCheck, 
   HelpCircle,
-  ExternalLink
+  ExternalLink,
+  Phone,
+  User
 } from 'lucide-react';
 import { translations } from '../data/translations';
 
@@ -133,6 +135,68 @@ export default function Help({ lang }) {
           <li><strong>{isMr ? 'चेक ट्रे तपासणी' : 'Check Tray Inspection'}:</strong> {t.help.tipTray}</li>
           <li><strong>{isMr ? 'पहाटेचे ऑक्सिजन संकट' : 'Dissolved Oxygen Stress'}:</strong> {t.help.tipOxygen}</li>
         </ul>
+      </div>
+
+      {/* Support & Contact Details */}
+      <div className="bg-linear-to-r from-teal-50/90 via-emerald-50/70 to-teal-50/90 border border-teal-200 rounded-3xl p-5 sm:p-6 shadow-xs space-y-4">
+        <div className="flex items-center justify-between flex-wrap gap-2 border-b border-teal-100 pb-3">
+          <h3 className="font-bold text-teal-950 text-base flex items-center gap-2">
+            <Phone className="w-5 h-5 text-teal-600" />
+            <span>{isMr ? 'मदत व शेतकरी संपर्क' : 'Help & Farmer Support'}</span>
+          </h3>
+          <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-teal-100 text-teal-800 border border-teal-200">
+            {isMr ? 'थेट संपर्क' : 'Direct Helpline'}
+          </span>
+        </div>
+
+        <p className="text-xs sm:text-sm text-teal-900/80">
+          {isMr 
+            ? 'मत्स्य खाद्य व्यवस्थापन, तांत्रिक अडचणी किंवा मार्गदर्शनासाठी खालील क्रमांकावर संपर्क साधा:'
+            : 'For aquaculture feed guidance, application assistance, or technical queries, contact:'}
+        </p>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+          <div className="flex items-center gap-3 bg-white p-3.5 rounded-2xl border border-teal-100 shadow-2xs">
+            <div className="w-10 h-10 rounded-xl bg-teal-50 flex items-center justify-center text-teal-700 shrink-0">
+              <User className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="text-[11px] uppercase tracking-wider font-bold text-slate-400">
+                {isMr ? 'संपर्क नाव' : 'Contact Name'}
+              </div>
+              <div className="text-sm sm:text-base font-extrabold text-slate-800">
+                Dnyaneshwar Shelke
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between gap-3 bg-white p-3.5 rounded-2xl border border-teal-100 shadow-2xs">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-700 shrink-0">
+                <Phone className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="text-[11px] uppercase tracking-wider font-bold text-slate-400">
+                  {isMr ? 'संपर्क नंबर' : 'Contact No'}
+                </div>
+                <a 
+                  href="tel:9356976062" 
+                  className="text-sm sm:text-base font-extrabold text-teal-700 hover:text-teal-800 hover:underline tracking-wide"
+                >
+                  9356976062
+                </a>
+              </div>
+            </div>
+
+            <a
+              href="tel:9356976062"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-xs transition-colors shrink-0"
+            >
+              <Phone className="w-3.5 h-3.5" />
+              <span>{isMr ? 'कॉल करा' : 'Call'}</span>
+            </a>
+          </div>
+        </div>
       </div>
     </div>
   );

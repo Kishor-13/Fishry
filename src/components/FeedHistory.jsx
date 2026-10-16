@@ -16,7 +16,9 @@ import {
   AlertCircle,
   ClipboardCheck,
   AlertTriangle,
-  ArrowRight
+  ArrowRight,
+  Clock,
+  Activity
 } from 'lucide-react';
 import { translations } from '../lib/translations';
 import { exportFeedHistoryToCsv } from '../lib/exportCsv';
@@ -180,7 +182,7 @@ export default function FeedHistory({
                 key={rec.id}
                 className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/90 shadow-card hover:shadow-card-hover transition-all space-y-3"
               >
-                {/* Top row: Species & Stage & Date */}
+                {/* Top row: Species & Stage & Session & Date */}
                 <div className="flex items-start justify-between gap-2 border-b border-slate-100 pb-2.5">
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
@@ -190,6 +192,16 @@ export default function FeedHistory({
                       <span className="text-xs px-2.5 py-0.5 rounded-full bg-teal-50 text-teal-800 font-semibold border border-teal-200/60">
                         {rec.culture_stage}
                       </span>
+                      {rec.session && (
+                        <span className="text-xs px-2.5 py-0.5 rounded-full bg-sky-50 text-sky-800 font-bold border border-sky-200/60 flex items-center gap-1">
+                          <Clock className="w-3 h-3 text-sky-600" />
+                          <span>
+                            {rec.session === 'morning' ? (lang === 'mr' ? 'सकाळ' : 'Morning')
+                              : rec.session === 'evening' ? (lang === 'mr' ? 'संध्याकाळ' : 'Evening')
+                              : rec.session.replace('_', ' ').toUpperCase()}
+                          </span>
+                        </span>
+                      )}
                       {rec.culture_age_days && (
                         <span className="text-xs px-2 py-0.5 rounded-full bg-orange-50 text-orange-800 font-bold border border-orange-200/60">
                           {lang === 'mr' ? `दिवस ${rec.culture_age_days}` : `Day ${rec.culture_age_days}`}
@@ -288,18 +300,30 @@ export default function FeedHistory({
                   </div>
                 )}
 
-                {/* Tray Observation & Critical Conditions Badges (if present) */}
-                {(trayLabel || (rec.critical_conditions && rec.critical_conditions.length > 0)) && (
+                {/* Observation, Check-Tray & Environmental Override Badges */}
+                {(rec.observation || rec.observation_method || trayLabel || rec.check_tray_feed_g || rec.environmental_override_reason || (rec.critical_conditions && rec.critical_conditions.length > 0)) && (
                   <div className="flex items-center gap-1.5 flex-wrap text-[11px]">
-                    {trayLabel && (
+                    {(rec.observation || trayLabel) && (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-teal-50 text-teal-800 border border-teal-200/80 font-medium">
                         <ClipboardCheck className="w-3 h-3 text-teal-600" />
-                        <span>{trayLabel}</span>
+                        <span>{rec.observation || trayLabel}</span>
+                      </span>
+                    )}
+                    {rec.check_tray_feed_g && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-orange-50 text-orange-900 border border-orange-200 font-medium">
+                        <Scale className="w-3 h-3 text-orange-600" />
+                        <span>{rec.check_tray_feed_g}g Tray ({rec.checking_interval_str || 'interval'})</span>
+                      </span>
+                    )}
+                    {rec.environmental_override_reason && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 text-amber-900 border border-amber-300 font-medium">
+                        <Activity className="w-3 h-3 text-amber-700" />
+                        <span>{rec.environmental_override_reason}</span>
                       </span>
                     )}
                     {rec.critical_conditions && rec.critical_conditions.length > 0 && (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200 font-medium">
-                        <AlertTriangle className="w-3 h-3 text-amber-600" />
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-rose-50 text-rose-800 border border-rose-200 font-medium">
+                        <AlertTriangle className="w-3 h-3 text-rose-600" />
                         <span>{rec.critical_conditions.length} {lang === 'mr' ? 'परिस्थिती' : 'conditions'}</span>
                       </span>
                     )}
@@ -390,6 +414,13 @@ export default function FeedHistory({
                 </span>
               </div>
               <div className="flex justify-between py-1 border-b">
+                <span className="text-slate-500">{lang === 'mr' ? 'खाद्य सत्र:' : 'Feeding Session:'}</span>
+                <span className="font-extrabold text-teal-800">
+                  {detailRecord.session ? detailRecord.session.toUpperCase().replace('_', ' ') : (lang === 'mr' ? 'दैनिक' : 'Daily')}
+                  {detailRecord.session_date ? ` (${detailRecord.session_date})` : ''}
+                </span>
+              </div>
+              <div className="flex justify-between py-1 border-b">
                 <span className="text-slate-500">{t.history.stage}</span>
                 <span className="font-bold text-slate-900">{detailRecord.culture_stage}</span>
               </div>
@@ -426,8 +457,52 @@ export default function FeedHistory({
                 <span className="font-bold text-amber-700">{detailRecord.feeding_rate}%</span>
               </div>
 
-              {/* Tray observation & Critical conditions if present */}
-              {detailRecord.tray_observation && detailRecord.tray_observation !== 'none' && (
+              {/* Observation method & observation detail */}
+              {(detailRecord.observation || detailRecord.observation_method) && (
+                <div className="flex justify-between py-1 border-b">
+                  <span className="text-slate-500">{lang === 'mr' ? 'निरीक्षण पद्धत व नोंद:' : 'Observation & Method:'}</span>
+                  <span className="font-bold text-teal-900 text-right">
+                    {detailRecord.observation || detailRecord.observation_method}
+                    {detailRecord.mud_obscured ? ` • ${lang === 'mr' ? 'चिखलाने झाकलेले' : 'Mud obscured'}` : ''}
+                    {detailRecord.is_magur_delayed_inspection ? ` • ${lang === 'mr' ? 'सकाळी ट्रे तपासणी' : 'Next-morning inspection'}` : ''}
+                  </span>
+                </div>
+              )}
+
+              {/* Vannamei Check-Tray Sample Grams */}
+              {detailRecord.check_tray_feed_g && (
+                <div className="flex justify-between py-1 border-b">
+                  <span className="text-slate-500">{lang === 'mr' ? 'चेक-ट्रे नमुना खाद्य:' : 'Check-Tray Sample Feed:'}</span>
+                  <span className="font-black text-orange-900">
+                    {detailRecord.check_tray_feed_g} g ({detailRecord.checking_interval_str || 'interval'})
+                  </span>
+                </div>
+              )}
+
+              {/* Environmental Measurements & Overrides */}
+              {(detailRecord.environmental_override_reason || detailRecord.dissolved_oxygen || detailRecord.water_temperature) && (
+                <div className="p-2.5 bg-amber-50 rounded-xl border border-amber-200 text-xs text-amber-950 space-y-1">
+                  <span className="font-bold block text-amber-900">
+                    {lang === 'mr' ? 'पर्यावरणीय परिस्थिती व अधिलिखित नियम:' : 'Environmental Assessment & Overrides:'}
+                  </span>
+                  <div className="grid grid-cols-2 gap-2 text-[11px] text-amber-900">
+                    {detailRecord.dissolved_oxygen && (
+                      <span>DO: <strong>{detailRecord.dissolved_oxygen} mg/L</strong> {detailRecord.is_fish_piping ? '(Piping!)' : ''}</span>
+                    )}
+                    {detailRecord.water_temperature && (
+                      <span>Temp: <strong>{detailRecord.water_temperature}°C</strong></span>
+                    )}
+                  </div>
+                  {detailRecord.environmental_override_reason && (
+                    <p className="text-[11px] font-semibold text-amber-900 mt-0.5">
+                      {detailRecord.environmental_override_reason}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Generic tray observation if present */}
+              {detailRecord.tray_observation && detailRecord.tray_observation !== 'none' && !detailRecord.observation && (
                 <div className="flex justify-between py-1 border-b">
                   <span className="text-slate-500">{t.feedTracking?.trayObservation || (lang === 'mr' ? 'खाद्य ट्रे निरीक्षण' : 'Feeding-Tray Observation')}</span>
                   <span className="font-bold text-teal-900">{getTrayLabel(detailRecord.tray_observation)}</span>

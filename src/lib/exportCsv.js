@@ -37,7 +37,11 @@ export function exportFeedHistoryToCsv(records, language = 'en') {
         'प्रत्यक्ष खाद्य खर्च (₹)',
         'खाद्य ट्रे निरीक्षण',
         'गंभीर परिस्थिती बदल',
-        'फरकाचे कारण / शेरा'
+        'फरकाचे कारण / शेरा',
+        'खाद्य सत्र',
+        'निरीक्षण पद्धत',
+        'पर्यावरणीय बदल',
+        'चेक-ट्रे नमुना खाद्य (ग्रॅम)'
       ]
     : [
         'Date & Time',
@@ -65,7 +69,11 @@ export function exportFeedHistoryToCsv(records, language = 'en') {
         'Actual Feed Cost (₹)',
         'Feeding-Tray Observation',
         'Critical Conditions',
-        'Difference Reason / Notes'
+        'Difference Reason / Notes',
+        'Feeding Session',
+        'Observation Method',
+        'Environmental Overrides',
+        'Check-Tray Sample (g)'
       ];
 
   const escapeCell = (val) => {
@@ -109,9 +117,15 @@ export function exportFeedHistoryToCsv(records, language = 'en') {
       ? (r.actual_feed_cost !== undefined && r.actual_feed_cost !== null ? Math.round(Number(r.actual_feed_cost)) : Math.round(Number(r.actual_feed) * Number(r.feed_price || 0)))
       : notRec;
 
-    const trayObsStr = r.tray_observation ? r.tray_observation : (isMr ? 'निरीक्षण नाही' : 'No observation');
+    const trayObsStr = r.observation || r.tray_observation || (isMr ? 'निरीक्षण नाही' : 'No observation');
     const critCondStr = Array.isArray(r.critical_conditions) && r.critical_conditions.length > 0 ? r.critical_conditions.join('; ') : (isMr ? 'कोणतेही नाही' : 'None');
     const diffReasonStr = r.difference_reason || r.notes || '';
+
+    // New columns
+    const sessionStr = r.session ? r.session : notRec;
+    const obsMethodStr = r.observation_method ? r.observation_method : notRec;
+    const envOverridesStr = r.environmental_override_reason || (isMr ? 'लागू नाही' : 'None');
+    const checkTrayGStr = (r.check_tray_feed_g !== undefined && r.check_tray_feed_g !== null) ? Number(r.check_tray_feed_g).toFixed(1) : notRec;
 
     return [
       escapeCell(formattedDate),
@@ -139,7 +153,11 @@ export function exportFeedHistoryToCsv(records, language = 'en') {
       escapeCell(actualCostStr),
       escapeCell(trayObsStr),
       escapeCell(critCondStr),
-      escapeCell(diffReasonStr)
+      escapeCell(diffReasonStr),
+      escapeCell(sessionStr),
+      escapeCell(obsMethodStr),
+      escapeCell(envOverridesStr),
+      escapeCell(checkTrayGStr)
     ].join(',');
   });
 

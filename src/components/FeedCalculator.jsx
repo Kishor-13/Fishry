@@ -30,7 +30,14 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   Minus,
-  Check
+  Check,
+  Wind,
+  Droplets,
+  Thermometer,
+  Activity,
+  ShieldAlert,
+  AlertOctagon,
+  Eye
 } from 'lucide-react';
 import { 
   SPECIES_LIST, 
@@ -41,9 +48,26 @@ import {
   VANNAMEI_FEEDING_SCHEDULE,
   FEEDING_TRAY_OBSERVATIONS,
   VANNAMEI_CRITICAL_CONDITIONS,
-  FRESHWATER_PRAWN_STAGES
+  FRESHWATER_PRAWN_STAGES,
+  OBSERVATION_METHODS,
+  FLOATING_FEED_OBSERVATIONS,
+  SUBMERGED_TRAY_OBSERVATIONS,
+  GREEN_FODDER_OBSERVATIONS,
+  VANNAMEI_CHECK_TRAY_RATES,
+  VANNAMEI_INITIAL_RESPONSE_NOTE,
+  VANNAMEI_FAECAL_INDICATORS,
+  DEFAULT_SESSIONS,
+  VANNAMEI_SESSIONS,
+  TILAPIA_EXTENDED_SESSIONS,
+  getSpeciesDefaultObservationMethod
 } from '../constants/speciesData';
-import { calculateFeed } from '../services/calculationService';
+import { 
+  calculateFeed,
+  evaluateEnvironmentalOverrides,
+  calculateVannameiCheckTray,
+  lookupPreviousSessionObservation,
+  calculateSessionFeedPlan 
+} from '../services/calculationService';
 import { calculateFeedDifference } from '../utils/calculations';
 import { formatDisplayNumber } from '../lib/ruleEngine';
 import { translations } from '../lib/translations';
@@ -53,6 +77,7 @@ export default function FeedCalculator({
   rulesList,
   ponds = [],
   initialPondId = null,
+  feedHistory = [],
   onSaveRecord,
   onNavigateToDashboard,
   onNavigateToHistory,
@@ -72,6 +97,33 @@ export default function FeedCalculator({
   const [feedPrice, setFeedPrice] = useState('40');
   const [cultureMonth, setCultureMonth] = useState('1');
   const [manualRate, setManualRate] = useState('');
+
+  // Strict Session-wise State (Section 3)
+  const [selectedSession, setSelectedSession] = useState('morning');
+  const [sessionDate, setSessionDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [isExtendedTilapiaSchedule, setIsExtendedTilapiaSchedule] = useState(false);
+
+  // Finfish & Crustacean Observation Method & Options (Section 2)
+  const [observationMethod, setObservationMethod] = useState(() => getSpeciesDefaultObservationMethod('rohu'));
+  const [floatingObs, setFloatingObs] = useState('none');
+  const [submergedObs, setSubmergedObs] = useState('none');
+  const [fodderObs, setFodderObs] = useState('none');
+  const [commonCarpMudObscured, setCommonCarpMudObscured] = useState(false);
+  const [magurDelayedInspection, setMagurDelayedInspection] = useState(false);
+
+  // Vannamei Check-Tray specific indicators (Section 6)
+  const [vannameiFaecalLength, setVannameiFaecalLength] = useState('short');
+  const [vannameiFaecalColour, setVannameiFaecalColour] = useState('feed_coloured');
+  const [vannameiSandPresent, setVannameiSandPresent] = useState(false);
+
+  // Environmental Assessment State (Section 4)
+  const [dissolvedOxygen, setDissolvedOxygen] = useState('');
+  const [isFishPiping, setIsFishPiping] = useState(false);
+  const [waterTemperature, setWaterTemperature] = useState('');
+  const [weatherCondition, setWeatherCondition] = useState('normal');
+  const [handlingCondition, setHandlingCondition] = useState('none');
+  const [isChemicalTreatment, setIsChemicalTreatment] = useState(false);
+  const [showEnvironmentalPanel, setShowEnvironmentalPanel] = useState(false);
 
   // Feature 1 (Vannamei) & Feature 2 (Freshwater Prawn) Inputs
   const [cultureAge, setCultureAge] = useState('30');
@@ -127,6 +179,12 @@ export default function FeedCalculator({
       );
       if (matchedSpecies) {
         setSelectedSpeciesId(matchedSpecies.id);
+        setObservationMethod(getSpeciesDefaultObservationMethod(matchedSpecies.id));
+        if (matchedSpecies.id === 'vannamei') {
+          setSelectedSession('7_am');
+        } else {
+          setSelectedSession('morning');
+        }
       } else if (p.species) {
         setSelectedSpeciesId('custom');
       }
@@ -147,7 +205,15 @@ export default function FeedCalculator({
     setActualFeed('');
     setDifferenceReason('');
     setTrayObservation('none');
+    setFloatingObs('none');
+    setSubmergedObs('none');
+    setFodderObs('none');
     setCriticalConditions([]);
+    setCommonCarpMudObscured(false);
+    setMagurDelayedInspection(false);
+
+    const defaultObs = getSpeciesDefaultObservationMethod(newSpeciesId);
+    setObservationMethod(defaultObs);
 
     const newObj = SPECIES_LIST.find((s) => s.id === newSpeciesId);
     if (newObj?.id === 'vannamei') {
@@ -156,20 +222,24 @@ export default function FeedCalculator({
       setAverageWeight('3.1');
       setFeedPrice('65');
       setManualRate('');
-    } else if (newObj?.id === 'freshwater_prawn') {
-      setCultureStage('Grow-out');
-      setFeedType('pellet');
-      setAverageWeight('25');
-      setFeedPrice('55');
-      setManualRate('3.5');
-    } else if (!newObj?.isCustom && newObj?.id !== 'magur' && newObj?.id !== 'grass_carp') {
-      if (cultureStage === 'Nursery' && newObj?.category === 'IMC') {
-        setManualRate('');
+      setSelectedSession('7_am');
+    } else {
+      setSelectedSession('morning');
+      if (newObj?.id === 'freshwater_prawn') {
+        setCultureStage('Grow-out');
+        setFeedType('pellet');
+        setAverageWeight('25');
+        setFeedPrice('55');
+        setManualRate('3.5');
+      } else if (!newObj?.isCustom && newObj?.id !== 'magur' && newObj?.id !== 'grass_carp') {
+        if (cultureStage === 'Nursery' && newObj?.category === 'IMC') {
+          setManualRate('');
+        } else {
+          setManualRate('');
+        }
       } else {
         setManualRate('');
       }
-    } else {
-      setManualRate('');
     }
   };
 
@@ -267,15 +337,118 @@ export default function FeedCalculator({
     criticalConditions,
   ]);
 
+  // Look up previous matching session observation (Section 3: Strict Day-to-Day Mapping)
+  const previousSessionObs = useMemo(() => {
+    return lookupPreviousSessionObservation(feedHistory, {
+      species: currentSpeciesObj.name,
+      pondId: selectedPondId,
+      session: selectedSession,
+      currentDate: sessionDate
+    });
+  }, [feedHistory, currentSpeciesObj.name, selectedPondId, selectedSession, sessionDate]);
+
+  // Evaluate environmental conditions using safety hierarchy (Section 4)
+  const environmentalEval = useMemo(() => {
+    return evaluateEnvironmentalOverrides({
+      speciesId: currentSpeciesObj.id,
+      dissolvedOxygen,
+      waterTemperature,
+      isFishPiping,
+      weatherCondition,
+      handlingCondition,
+      isChemicalTreatment
+    });
+  }, [
+    currentSpeciesObj.id,
+    dissolvedOxygen,
+    waterTemperature,
+    isFishPiping,
+    weatherCondition,
+    handlingCondition,
+    isChemicalTreatment
+  ]);
+
+  // Strict session-wise feed plan (Daily baseline preserved; session allocated transparently) (Section 3 & 5)
+  const sessionPlan = useMemo(() => {
+    const dailyBase = calculationResult.dailyFeed || 0;
+    return calculateSessionFeedPlan({
+      dailyBaseFeed: dailyBase,
+      speciesId: currentSpeciesObj.id,
+      session: selectedSession,
+      isExtendedTilapia: isExtendedTilapiaSchedule,
+      previousObservation: previousSessionObs,
+      environmentalOverride: environmentalEval
+    });
+  }, [
+    calculationResult.dailyFeed,
+    currentSpeciesObj.id,
+    selectedSession,
+    isExtendedTilapiaSchedule,
+    previousSessionObs,
+    environmentalEval
+  ]);
+
+  // Vannamei Check-Tray calculation (Tray feed g = session feed kg * tray rate g/kg) (Section 6)
+  const vannameiTrayCalc = useMemo(() => {
+    if (!isVannamei) return null;
+    const sessionPlannedKg = (sessionPlan && sessionPlan.proposedQuantity !== undefined)
+      ? sessionPlan.proposedQuantity
+      : (sessionPlan?.baseSessionFeed || 0);
+    const avgWeightG = Number(averageWeight) || 0;
+    return calculateVannameiCheckTray(sessionPlannedKg, avgWeightG);
+  }, [isVannamei, sessionPlan, averageWeight]);
+
+  // Active observation detail
+  const activeObservationData = useMemo(() => {
+    if (observationMethod === 'floating_feed') {
+      const found = FLOATING_FEED_OBSERVATIONS.find(o => o.id === floatingObs);
+      return found ? {
+        id: found.id,
+        label: found.label,
+        label_mr: found.label_mr,
+        action: found.action,
+        action_mr: found.action_mr,
+        adjustmentPercent: found.adjustmentPercent,
+        guidance: found.action,
+        guidance_mr: found.action_mr
+      } : null;
+    }
+    if (observationMethod === 'green_fodder_frame') {
+      const found = GREEN_FODDER_OBSERVATIONS.find(o => o.id === fodderObs);
+      return found ? {
+        id: found.id,
+        label: found.label,
+        label_mr: found.label_mr,
+        action: found.action,
+        action_mr: found.action_mr,
+        adjustmentPercent: found.adjustmentPercent,
+        guidance: found.action,
+        guidance_mr: found.action_mr
+      } : null;
+    }
+    // Default submerged or suspended tray
+    const found = SUBMERGED_TRAY_OBSERVATIONS.find(o => o.id === submergedObs);
+    return found ? {
+      id: found.id,
+      label: found.label,
+      label_mr: found.label_mr,
+      action: found.action,
+      action_mr: found.action_mr,
+      adjustmentPercent: found.adjustmentPercent,
+      guidance: found.action,
+      guidance_mr: found.action_mr
+    } : null;
+  }, [observationMethod, floatingObs, submergedObs, fodderObs]);
+
   // Keep Confirmed Feeding Quantity synchronized if farmer hasn't manually overridden it
   useEffect(() => {
-    if (!isConfirmedManuallySet && calculationResult.isValid) {
-      const recommendedVal = calculationResult.proposedAdjustment?.proposedFeed !== undefined
-        ? calculationResult.proposedAdjustment.proposedFeed
-        : calculationResult.dailyFeed;
+    if (!isConfirmedManuallySet && calculationResult.isValid && sessionPlan) {
+      const recommendedVal = sessionPlan.proposedQuantity !== undefined
+        ? sessionPlan.proposedQuantity
+        : sessionPlan.baseSessionFeed;
       setConfirmedFeed(String(recommendedVal));
     }
-  }, [calculationResult, isConfirmedManuallySet]);
+  }, [calculationResult, sessionPlan, isConfirmedManuallySet]);
 
   // Reset saved toast when inputs change
   useEffect(() => {
@@ -292,13 +465,28 @@ export default function FeedCalculator({
     cultureMonth,
     manualRate,
     cultureAge,
+    selectedSession,
+    sessionDate,
+    observationMethod,
+    floatingObs,
+    submergedObs,
+    fodderObs,
+    dissolvedOxygen,
+    isFishPiping,
+    waterTemperature,
+    weatherCondition,
+    handlingCondition,
+    isChemicalTreatment,
     trayObservation,
     criticalConditions,
   ]);
 
-  // Live Feed Difference Calculation (Feature 3)
+  // Live Feed Difference Calculation (Section 7)
   const feedAccountability = useMemo(() => {
-    const calculatedFeedKg = calculationResult.calculatedFeed || calculationResult.dailyFeed || 0;
+    const plannedSessionKg = (sessionPlan && sessionPlan.baseSessionFeed > 0)
+      ? sessionPlan.baseSessionFeed
+      : (calculationResult.calculatedFeed || calculationResult.dailyFeed || 0);
+
     const actualFeedKg = actualFeed !== '' && !isNaN(Number(actualFeed)) && Number(actualFeed) >= 0
       ? Number(actualFeed)
       : null;
@@ -308,21 +496,21 @@ export default function FeedCalculator({
       return {
         hasActual: false,
         actualFeedKg: null,
-        calculatedFeedKg,
+        calculatedFeedKg: plannedSessionKg,
         differenceKg: null,
         differencePercent: null,
         actualFeedCost: null,
       };
     }
 
-    const diff = calculateFeedDifference(actualFeedKg, calculatedFeedKg, price);
+    const diff = calculateFeedDifference(actualFeedKg, plannedSessionKg, price);
     return {
       hasActual: true,
       actualFeedKg,
-      calculatedFeedKg,
+      calculatedFeedKg: plannedSessionKg,
       ...diff,
     };
-  }, [calculationResult, actualFeed, feedPrice]);
+  }, [calculationResult, sessionPlan, actualFeed, feedPrice]);
 
   // Quick Preset Sample Loaders
   const loadRohuRearingPreset = () => {
@@ -335,6 +523,19 @@ export default function FeedCalculator({
     setAverageWeight('50');
     setFeedPrice('40');
     setManualRate('7');
+    setSelectedSession('morning');
+    setObservationMethod('submerged_tray');
+    setFloatingObs('none');
+    setSubmergedObs('none');
+    setFodderObs('none');
+    setCommonCarpMudObscured(false);
+    setMagurDelayedInspection(false);
+    setDissolvedOxygen('');
+    setIsFishPiping(false);
+    setWaterTemperature('');
+    setWeatherCondition('normal');
+    setHandlingCondition('none');
+    setIsChemicalTreatment(false);
     setTrayObservation('none');
     setCriticalConditions([]);
     setIsConfirmedManuallySet(false);
@@ -351,6 +552,11 @@ export default function FeedCalculator({
     setAverageWeight('');
     setFeedPrice('40');
     setManualRate('400'); // First 5 days (400%)
+    setSelectedSession('morning');
+    setObservationMethod('floating_feed');
+    setFloatingObs('none');
+    setSubmergedObs('none');
+    setFodderObs('none');
     setTrayObservation('none');
     setCriticalConditions([]);
     setIsConfirmedManuallySet(false);
@@ -368,8 +574,16 @@ export default function FeedCalculator({
     setAverageWeight('3.1');
     setFeedPrice('65');
     setManualRate('');
+    setSelectedSession('7_am');
+    setObservationMethod('vannamei_check_tray');
     setTrayObservation('consumed');
     setCriticalConditions([]);
+    setDissolvedOxygen('6.2');
+    setIsFishPiping(false);
+    setWaterTemperature('29');
+    setWeatherCondition('normal');
+    setHandlingCondition('none');
+    setIsChemicalTreatment(false);
     setIsConfirmedManuallySet(false);
     setConfirmedFeed('');
     setActualFeed('');
@@ -385,6 +599,9 @@ export default function FeedCalculator({
     setFeedPrice('55');
     setManualRate('3.5');
     setFeedType('pellet');
+    setSelectedSession('morning');
+    setObservationMethod('submerged_tray');
+    setSubmergedObs('crumbs_under_10_percent');
     setTrayObservation('small_remaining');
     setCriticalConditions([]);
     setIsConfirmedManuallySet(false);
@@ -401,6 +618,8 @@ export default function FeedCalculator({
     setAverageWeight('100');
     setFeedPrice('40');
     setManualRate('3');
+    setSelectedSession('morning');
+    setObservationMethod('submerged_tray');
     setTrayObservation('none');
     setCriticalConditions([]);
     setIsConfirmedManuallySet(false);
@@ -422,6 +641,22 @@ export default function FeedCalculator({
     setManualRate('');
     setCultureAge('30');
     setFeedType('pellet');
+    setSelectedSession('morning');
+    setObservationMethod('submerged_tray');
+    setFloatingObs('none');
+    setSubmergedObs('none');
+    setFodderObs('none');
+    setCommonCarpMudObscured(false);
+    setMagurDelayedInspection(false);
+    setVannameiFaecalLength('short');
+    setVannameiFaecalColour('feed_coloured');
+    setVannameiSandPresent(false);
+    setDissolvedOxygen('');
+    setIsFishPiping(false);
+    setWaterTemperature('');
+    setWeatherCondition('normal');
+    setHandlingCondition('none');
+    setIsChemicalTreatment(false);
     setTrayObservation('none');
     setCriticalConditions([]);
     setConfirmedFeed('');
@@ -436,21 +671,24 @@ export default function FeedCalculator({
 
     const selectedPondObj = ponds.find((p) => String(p.id) === String(selectedPondId));
 
-    const calculatedFeedNum = calculationResult.calculatedFeed || calculationResult.dailyFeed || 0;
+    const plannedSessionKg = (sessionPlan && sessionPlan.baseSessionFeed > 0)
+      ? sessionPlan.baseSessionFeed
+      : (calculationResult.calculatedFeed || calculationResult.dailyFeed || 0);
+
     const finalConfirmedFeed = confirmedFeed !== '' && !isNaN(Number(confirmedFeed))
       ? Number(confirmedFeed)
-      : (calculationResult.proposedAdjustment?.proposedFeed ?? calculationResult.dailyFeed);
+      : (sessionPlan?.proposedQuantity ?? plannedSessionKg);
 
     const finalActualFeed = (actualFeed !== '' && !isNaN(Number(actualFeed)) && Number(actualFeed) >= 0)
       ? Number(actualFeed)
       : null;
 
     const diffKg = finalActualFeed !== null
-      ? Number((finalActualFeed - calculatedFeedNum).toFixed(3))
+      ? Number((finalActualFeed - plannedSessionKg).toFixed(3))
       : null;
 
-    const diffPercent = (finalActualFeed !== null && calculatedFeedNum > 0)
-      ? Number((((finalActualFeed - calculatedFeedNum) / calculatedFeedNum) * 100).toFixed(2))
+    const diffPercent = (finalActualFeed !== null && plannedSessionKg > 0)
+      ? Number((((finalActualFeed - plannedSessionKg) / plannedSessionKg) * 100).toFixed(2))
       : null;
 
     const actualCost = finalActualFeed !== null
@@ -487,8 +725,40 @@ export default function FeedCalculator({
         pond_id: selectedPondId || null,
         pond_name: selectedPondObj ? selectedPondObj.name : '',
 
-        // Feature 3: Feed accountability fields
-        calculated_feed: calculatedFeedNum,
+        // Strict Session-wise fields (Section 3)
+        session: selectedSession,
+        session_date: sessionDate,
+        session_baseline_feed: plannedSessionKg,
+        proposed_feed: sessionPlan?.proposedQuantity ?? plannedSessionKg,
+
+        // Species-specific observation fields (Section 2)
+        observation_method: observationMethod,
+        observation: activeObservationData?.label || (trayObservation !== 'none' ? trayObservation : ''),
+        proposed_adjustment_percent: activeObservationData?.adjustmentPercent || 0,
+        observation_guidance: activeObservationData?.guidance || '',
+        observation_guidance_mr: activeObservationData?.guidance_mr || '',
+        mud_obscured: currentSpeciesObj.id === 'common_carp' ? commonCarpMudObscured : false,
+        is_magur_delayed_inspection: currentSpeciesObj.id === 'magur' ? magurDelayedInspection : false,
+
+        // Vannamei Check-tray details (Section 6)
+        check_tray_feed_g: vannameiTrayCalc?.trayFeedG ?? null,
+        check_tray_rate_g_per_kg: vannameiTrayCalc?.trayRatePerKg ?? null,
+        checking_interval_str: vannameiTrayCalc?.checkingInterval ?? '',
+        faecal_length: isVannamei ? vannameiFaecalLength : '',
+        faecal_colour: isVannamei ? vannameiFaecalColour : '',
+        sand_present: isVannamei ? vannameiSandPresent : false,
+
+        // Environmental assessment & override fields (Section 4)
+        dissolved_oxygen: dissolvedOxygen ? Number(dissolvedOxygen) : null,
+        is_fish_piping: isFishPiping,
+        water_temperature: waterTemperature ? Number(waterTemperature) : null,
+        weather_condition: weatherCondition,
+        handling_condition: handlingCondition,
+        is_chemical_treatment: isChemicalTreatment,
+        environmental_override_reason: environmentalEval?.reason || '',
+
+        // Feature 3: Feed accountability fields (Preserve existing keys)
+        calculated_feed: plannedSessionKg,
         confirmed_feed: finalConfirmedFeed,
         actual_feed: finalActualFeed,
         difference_kg: diffKg,
@@ -499,8 +769,11 @@ export default function FeedCalculator({
       setIsSaved(true);
       setSavedModalInfo({
         pondName: selectedPondObj ? selectedPondObj.name : currentSpeciesObj.name,
-        dailyFeed: finalConfirmedFeed,
-        calculatedFeed: calculatedFeedNum,
+        session: selectedSession,
+        sessionDate,
+        dailyFeed: calculationResult.dailyFeed,
+        sessionBaseFeed: plannedSessionKg,
+        proposedFeed: sessionPlan?.proposedQuantity ?? plannedSessionKg,
         confirmedFeed: finalConfirmedFeed,
         actualFeed: finalActualFeed,
         differenceKg: diffKg,
@@ -1471,46 +1744,604 @@ export default function FeedCalculator({
               </div>
             )}
 
-            {/* FEEDING-TRAY MANAGEMENT OBSERVATION (Shared Choices) */}
-            <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
-              <div className="flex items-center justify-between">
-                <label htmlFor="traySelect" className="block text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                  <ClipboardCheck className="w-4 h-4 text-teal-600" />
-                  <span>{t.feedTracking?.trayObservation || (lang === 'mr' ? 'खाद्य ट्रे निरीक्षण' : 'Feeding-Tray Observation')}</span>
-                </label>
-                <span className="text-[10px] text-slate-500 bg-white px-2 py-0.5 rounded-md border border-slate-200">
-                  {lang === 'mr' ? '५ पर्याय' : '5 Choices'}
+            {/* ========================================================================= */}
+            {/* SECTION 3: STRICT FEEDING SESSION & DAY-TO-DAY MAPPING */}
+            {/* ========================================================================= */}
+            <div className="p-4 bg-gradient-to-br from-sky-50/90 to-teal-50/70 border-2 border-teal-500/40 rounded-2xl space-y-3">
+              <div className="flex items-center justify-between border-b border-teal-200/60 pb-2">
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-teal-700" />
+                  <span className="text-xs font-black text-slate-900 uppercase tracking-wider">
+                    {t.observation?.sessionSchedule || (lang === 'mr' ? 'खाद्य सत्र व दैनिक मॅपिंग' : 'Feeding Session & Day-to-Day Mapping')}
+                  </span>
+                </div>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-teal-100 text-teal-900 border border-teal-300">
+                  {lang === 'mr' ? 'सत्र-आधारित' : 'Strict Session-wise'}
                 </span>
               </div>
-              <select
-                id="traySelect"
-                value={trayObservation}
-                onChange={(e) => setTrayObservation(e.target.value)}
-                className="w-full h-11 px-3.5 rounded-xl bg-white border border-slate-300 text-slate-900 font-semibold text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 shadow-xs cursor-pointer"
-              >
-                {FEEDING_TRAY_OBSERVATIONS.map((obs) => (
-                  <option key={obs.id} value={obs.id}>
-                    {lang === 'mr' ? obs.label_mr : obs.label}
-                  </option>
-                ))}
-              </select>
-              <p className="text-[11px] text-slate-500 leading-snug">
-                {isVannamei 
-                  ? (lang === 'mr' 
-                      ? 'ट्रे निरीक्षणानुसार पुढील आहारासाठी समायोजन मार्गदर्शन दर्शवले जाईल.'
-                      : 'Observation provides proposed adjustment guidance for the next meal.')
-                  : isFreshwaterPrawn
-                  ? (lang === 'mr'
-                      ? 'FAO मार्गदर्शक: शिल्लक खाद्यानुसार सावधगिरी बाळगा. व्हॅनामेईची टक्केवारी येथे वापरू नका.'
-                      : 'FAO Guidance: Complete consumption justifies reviewing an increase, while leftovers justify reducing ration.')
-                  : (lang === 'mr'
-                      ? 'खाद्य वाया जाणे रोखण्यासाठी ट्रे निरीक्षणाची नोंद ठेवा.'
-                      : 'Log tray consumption to monitor appetite and prevent overfeeding.')
-                }
-              </p>
+
+              {/* Session Date & Tilapia Extended Schedule Toggle */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                <div>
+                  <label htmlFor="sessionDateInput" className="block text-[11px] font-bold text-slate-700 mb-1">
+                    {lang === 'mr' ? 'सत्र तारीख:' : 'Feeding Date:'}
+                  </label>
+                  <input
+                    id="sessionDateInput"
+                    type="date"
+                    value={sessionDate}
+                    onChange={(e) => setSessionDate(e.target.value)}
+                    className="w-full h-9 px-3 rounded-xl bg-white border border-slate-300 text-slate-900 font-semibold text-xs focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  />
+                </div>
+
+                {currentSpeciesObj.id === 'tilapia' && (
+                  <div className="flex flex-col justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setIsExtendedTilapiaSchedule(!isExtendedTilapiaSchedule)}
+                      className={`h-9 px-3 rounded-xl font-bold text-[11px] border transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                        isExtendedTilapiaSchedule
+                          ? 'bg-teal-600 text-white border-teal-700 shadow-xs'
+                          : 'bg-white text-teal-900 border-teal-300 hover:bg-teal-50'
+                      }`}
+                    >
+                      <Layers className="w-3.5 h-3.5" />
+                      <span>{isExtendedTilapiaSchedule ? (lang === 'mr' ? '३–४ वेळा वेळापत्रक सक्रिय' : '3–4 Meals Active') : (lang === 'mr' ? '३–४ वेळा वेळापत्रक निवडा' : 'Enable 3–4 Meals/Day')}</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Session Buttons */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1.5">
+                  {lang === 'mr' ? 'सक्रिय सत्र निवडा (या सत्रासाठी खाद्य मोजा):' : 'Select Active Feeding Session:'}
+                </label>
+                <div className={`grid gap-2 ${isVannamei || (currentSpeciesObj.id === 'tilapia' && isExtendedTilapiaSchedule) ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-2'}`}>
+                  {isVannamei ? (
+                    VANNAMEI_SESSIONS.map((sess) => (
+                      <button
+                        key={sess.id}
+                        type="button"
+                        onClick={() => setSelectedSession(sess.id)}
+                        className={`p-2.5 rounded-xl text-center border transition-all cursor-pointer ${
+                          selectedSession === sess.id
+                            ? 'bg-teal-600 text-white border-teal-700 shadow-xs'
+                            : 'bg-white text-slate-800 border-slate-200 hover:bg-teal-50/60'
+                        }`}
+                      >
+                        <span className="block text-xs font-black truncate">
+                          {sess.time}
+                        </span>
+                        <span className={`block text-[10px] mt-0.5 ${selectedSession === sess.id ? 'text-teal-100' : 'text-slate-500'}`}>
+                          {lang === 'mr' ? sess.label_mr : sess.label} (25%)
+                        </span>
+                      </button>
+                    ))
+                  ) : currentSpeciesObj.id === 'tilapia' && isExtendedTilapiaSchedule ? (
+                    TILAPIA_EXTENDED_SESSIONS.map((sess) => (
+                      <button
+                        key={sess.id}
+                        type="button"
+                        onClick={() => setSelectedSession(sess.id)}
+                        className={`p-2.5 rounded-xl text-center border transition-all cursor-pointer ${
+                          selectedSession === sess.id
+                            ? 'bg-teal-600 text-white border-teal-700 shadow-xs'
+                            : 'bg-white text-slate-800 border-slate-200 hover:bg-teal-50/60'
+                        }`}
+                      >
+                        <span className="block text-xs font-black truncate">
+                          {sess.time}
+                        </span>
+                        <span className={`block text-[10px] mt-0.5 ${selectedSession === sess.id ? 'text-teal-100' : 'text-slate-500'}`}>
+                          {lang === 'mr' ? sess.label_mr : sess.label} (25%)
+                        </span>
+                      </button>
+                    ))
+                  ) : (
+                    DEFAULT_SESSIONS.map((sess) => (
+                      <button
+                        key={sess.id}
+                        type="button"
+                        onClick={() => setSelectedSession(sess.id)}
+                        className={`p-2.5 rounded-xl text-center border transition-all cursor-pointer ${
+                          selectedSession === sess.id
+                            ? 'bg-teal-600 text-white border-teal-700 shadow-xs'
+                            : 'bg-white text-slate-800 border-slate-200 hover:bg-teal-50/60'
+                        }`}
+                      >
+                        <span className="block text-xs font-black truncate flex items-center justify-center gap-1">
+                          {sess.id === 'morning' ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
+                          <span>{lang === 'mr' ? sess.label_mr : sess.label}</span>
+                        </span>
+                        <span className={`block text-[10px] mt-0.5 ${selectedSession === sess.id ? 'text-teal-100' : 'text-slate-500'}`}>
+                          {sess.time} • 50%
+                        </span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* Magur Next-Morning Tray Inspection Checkbox */}
+              {isMagur && (
+                <div className="p-2.5 bg-amber-50/90 border border-amber-300 rounded-xl text-xs space-y-1">
+                  <label className="flex items-start gap-2 cursor-pointer font-bold text-amber-950">
+                    <input
+                      type="checkbox"
+                      checked={magurDelayedInspection}
+                      onChange={(e) => setMagurDelayedInspection(e.target.checked)}
+                      className="mt-0.5 h-4 w-4 rounded border-amber-400 text-teal-600 focus:ring-teal-500"
+                    />
+                    <span>
+                      {t.observation?.magurDelayedInspection || (lang === 'mr' ? 'माकूर रात्रकालीन आहाराची पुढील सकाळी ट्रे तपासणी' : 'Next-morning tray inspection for previous evening feeding')}
+                    </span>
+                  </label>
+                  <p className="text-[11px] text-amber-900/90 pl-6">
+                    {lang === 'mr'
+                      ? 'ही तपासणी मागील संध्याकाळच्या आहाराचे निरीक्षण म्हणून नोंदवली जाते, ज्यामुळे पुढील संध्याकाळचे प्रमाण समायोजित होते (सकाळचा आहार प्रभावित होत नाही).'
+                      : 'Recorded as an observation of previous evening meal; informs next evening recommendation only (never morning ration).'}
+                  </p>
+                </div>
+              )}
+
+              {/* Previous Session Observation Banner (Strict session isolation) */}
+              <div className={`p-3 rounded-xl border text-xs space-y-1 ${
+                previousSessionObs
+                  ? 'bg-emerald-50 border-emerald-300 text-emerald-950'
+                  : 'bg-white/80 border-slate-200 text-slate-600'
+              }`}>
+                <div className="flex items-center justify-between">
+                  <span className="font-extrabold flex items-center gap-1.5">
+                    {previousSessionObs ? <CheckCircle2 className="w-4 h-4 text-emerald-600" /> : <Info className="w-4 h-4 text-slate-400" />}
+                    <span>{t.observation?.prevSessionObs || (lang === 'mr' ? 'मागील जुळणाऱ्या सत्राचे निरीक्षण' : 'Previous Matching Session Observation')}</span>
+                  </span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white border border-slate-200">
+                    {selectedSession.toUpperCase().replace('_', ' ')}
+                  </span>
+                </div>
+                {previousSessionObs ? (
+                  <div>
+                    <p className="font-bold text-emerald-900">
+                      {previousSessionObs.observation} {previousSessionObs.proposed_adjustment_percent ? `(${previousSessionObs.proposed_adjustment_percent >= 0 ? '+' : ''}${previousSessionObs.proposed_adjustment_percent}%)` : ''}
+                    </p>
+                    <p className="text-[11px] text-emerald-800">
+                      {lang === 'mr'
+                        ? `नोंद: ${previousSessionObs.session_date} च्या ${previousSessionObs.session} सत्रावरून. कठोर नियम: हे केवळ आजच्या या सत्रासाठी लागू होते.`
+                        : `Learned strictly from ${previousSessionObs.session_date} ${previousSessionObs.session} session. Strictly informs this session only.`}
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-slate-500">
+                    {t.observation?.noPrevObsFound || (lang === 'mr' ? 'या सत्रासाठी कालचे निरीक्षण उपलब्ध नाही. मानक आधारभूत प्रमाण लागू राहील.' : 'No prior observation for this session on previous day. Baseline ration applied pending new observation.')}
+                  </p>
+                )}
+              </div>
             </div>
 
-            {/* VANNAMEI CRITICAL POND CONDITIONS (Section 6) */}
+            {/* ========================================================================= */}
+            {/* SECTION 2: SPECIES-SPECIFIC OBSERVATION SYSTEM */}
+            {/* ========================================================================= */}
+            <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+              <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                <div className="flex items-center gap-2">
+                  <Eye className="w-4 h-4 text-teal-600" />
+                  <span className="text-xs font-black text-slate-900 uppercase tracking-wider">
+                    {t.observation?.methodTitle || (lang === 'mr' ? 'प्रजाती-अनुरूप निरीक्षण पद्धत' : 'Species-Specific Observation System')}
+                  </span>
+                </div>
+                <span className="text-[10px] text-teal-800 font-bold bg-teal-50 px-2 py-0.5 rounded-md border border-teal-200">
+                  {currentSpeciesObj.name}
+                </span>
+              </div>
+
+              {/* Observation Method Selector */}
+              <div>
+                <label htmlFor="obsMethodSelect" className="block text-xs font-bold text-slate-800 mb-1">
+                  {lang === 'mr' ? 'निरीक्षण पद्धत:' : 'Monitoring Method:'}
+                </label>
+                <select
+                  id="obsMethodSelect"
+                  value={observationMethod}
+                  onChange={(e) => setObservationMethod(e.target.value)}
+                  className="w-full h-10 px-3 rounded-xl bg-white border border-slate-300 text-slate-900 font-semibold text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                >
+                  {OBSERVATION_METHODS.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {lang === 'mr' ? m.name_mr : m.name}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-slate-500 mt-1">
+                  {observationMethod === 'floating_feed' && (lang === 'mr' ? 'टिळापिया, पंगासियस आणि कतलासाठी पृष्ठभागावरील तरंगत्या गोळ्यांचे निरीक्षण.' : 'Surface floating-pellet monitoring for Tilapia, Pangasius, and Catla.')}
+                  {observationMethod === 'submerged_tray' && (lang === 'mr' ? 'रोहू, म्रिगल, कॉमन कार्प आणि मागूरसाठी बुडविलेल्या ट्रेचे २–३ तासांनी निरीक्षण.' : 'Submerged sinking-feed tray monitoring after 2–3 hours for carps and catfish.')}
+                  {observationMethod === 'suspended_tray' && (lang === 'mr' ? 'रोहूसाठी मध्य-स्तरावरील लटकवलेला ट्रे.' : 'Suspended mid-water tray monitoring suitable for column feeders like Rohu.')}
+                  {observationMethod === 'green_fodder_frame' && (lang === 'mr' ? 'ग्रास कार्पसाठी तरंगता हिरवा चारा फ्रेम/कोठा.' : 'Floating green-fodder corral for Grass Carp.')}
+                  {observationMethod === 'vannamei_check_tray' && (lang === 'mr' ? 'व्हॅनामेई कोळंबीसाठी वजनानुसार चेक-ट्रे प्रमाण व विष्ठा निरीक्षण.' : 'Avanti Feeds body-weight check-tray protocol for Vannamei shrimp.')}
+                </p>
+              </div>
+
+              {/* A. FLOATING FEED OBSERVATION CHOICES */}
+              {observationMethod === 'floating_feed' && (
+                <div className="space-y-2 pt-1">
+                  <label htmlFor="floatingObsSelect" className="block text-xs font-bold text-teal-950">
+                    {t.observation?.floatingFeedObs || (lang === 'mr' ? 'तरंगते खाद्य निरीक्षण (प्रसारणानंतर):' : 'Floating-Feed Pellet Observation:')}
+                  </label>
+                  <select
+                    id="floatingObsSelect"
+                    value={floatingObs}
+                    onChange={(e) => setFloatingObs(e.target.value)}
+                    className="w-full h-11 px-3 rounded-xl bg-white border border-teal-300 text-slate-900 font-bold text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  >
+                    <option value="none">{lang === 'mr' ? '-- निरीक्षण निवडा --' : '-- Select Observation --'}</option>
+                    {FLOATING_FEED_OBSERVATIONS.map((obs) => (
+                      <option key={obs.id} value={obs.id}>
+                        {lang === 'mr' ? obs.label_mr : obs.label}
+                      </option>
+                    ))}
+                  </select>
+                  {floatingObs !== 'none' && activeObservationData && (
+                    <div className="p-2.5 bg-teal-50 border border-teal-200 rounded-xl text-xs space-y-1">
+                      <div className="flex items-center justify-between font-bold text-teal-950">
+                        <span>{lang === 'mr' ? 'प्रस्तावित कृती:' : 'Proposed Action:'}</span>
+                        <span className="text-teal-800 font-black">{activeObservationData.action}</span>
+                      </div>
+                      {floatingObs === 'unclassified_floating' && (
+                        <p className="text-[11px] text-amber-900 font-medium">
+                          {lang === 'mr'
+                            ? '⚠️ १०–१५ मिनिटे किंवा १५–२०% शिल्लक खाद्य ही अवर्गीकृत श्रेणी आहे. कोणताही मनमानी दर न लावता शेतकऱ्याने निर्णय घ्यावा; सुरक्षित आधारभूत प्रमाण कायम राहील.'
+                            : '⚠️ Unclassified gap range (10–15 min or 15–20% uneaten). Farmer review required; safe baseline retained pending confirmation.'}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* B. SUBMERGED / SUSPENDED TRAY OBSERVATION CHOICES */}
+              {(observationMethod === 'submerged_tray' || observationMethod === 'suspended_tray') && (
+                <div className="space-y-2 pt-1">
+                  <label htmlFor="submergedObsSelect" className="block text-xs font-bold text-teal-950">
+                    {t.observation?.submergedTrayObs || (lang === 'mr' ? 'बुडविलेला ट्रे निरीक्षण (२–३ तासांनंतर):' : 'Submerged Tray Observation (after 2–3h):')}
+                  </label>
+                  <select
+                    id="submergedObsSelect"
+                    value={submergedObs}
+                    onChange={(e) => setSubmergedObs(e.target.value)}
+                    className="w-full h-11 px-3 rounded-xl bg-white border border-teal-300 text-slate-900 font-bold text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  >
+                    <option value="none">{lang === 'mr' ? '-- निरीक्षण निवडा --' : '-- Select Observation --'}</option>
+                    {SUBMERGED_TRAY_OBSERVATIONS.map((obs) => (
+                      <option key={obs.id} value={obs.id}>
+                        {lang === 'mr' ? obs.label_mr : obs.label}
+                      </option>
+                    ))}
+                  </select>
+                  {submergedObs !== 'none' && activeObservationData && (
+                    <div className="p-2.5 bg-teal-50 border border-teal-200 rounded-xl text-xs space-y-1">
+                      <div className="flex items-center justify-between font-bold text-teal-950">
+                        <span>{lang === 'mr' ? 'प्रस्तावित कृती:' : 'Proposed Action:'}</span>
+                        <span className="text-teal-800 font-black">{activeObservationData.action}</span>
+                      </div>
+                      {submergedObs === 'unclassified_submerged' && (
+                        <p className="text-[11px] text-amber-900 font-medium">
+                          {lang === 'mr'
+                            ? '⚠️ २५–५०% शिल्लक खाद्य ही अवर्गीकृत श्रेणी आहे. कोणताही मनमानी दर न लावता शेतकऱ्याने निर्णय घ्यावा; सुरक्षित आधारभूत प्रमाण कायम राहील.'
+                            : '⚠️ Unclassified 25–50% remaining range. Farmer review required; safe baseline retained.'}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Common Carp Mud Obscured Checkbox */}
+                  {currentSpeciesObj.id === 'common_carp' && (
+                    <div className="p-2.5 bg-amber-50/80 border border-amber-300 rounded-xl text-xs space-y-1">
+                      <label className="flex items-center gap-2 cursor-pointer font-bold text-amber-950">
+                        <input
+                          type="checkbox"
+                          checked={commonCarpMudObscured}
+                          onChange={(e) => setCommonCarpMudObscured(e.target.checked)}
+                          className="h-4 w-4 rounded border-amber-400 text-teal-600 focus:ring-teal-500"
+                        />
+                        <span>{t.observation?.mudObscured || (lang === 'mr' ? 'चिखलामुळे शिल्लक खाद्य अस्पष्ट दिसत आहे' : 'Mud/silt obscures uneaten feed')}</span>
+                      </label>
+                      <p className="text-[10px] text-amber-900/90 pl-6">
+                        {lang === 'mr'
+                          ? 'कॉमन कार्प तळाशी अन्न शोधताना चिखल ढवळून टाकते, ज्यामुळे शिल्लक खाद्य झाकले जाऊ शकते.'
+                          : 'Common carp bottom foraging stirs up mud which can obscure uneaten feed on trays.'}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Magur Sinking Feed Reminder */}
+                  {isMagur && (
+                    <p className="text-[11px] text-amber-900 font-semibold bg-amber-50 p-2 rounded-lg border border-amber-200">
+                      ⚠️ {lang === 'mr' ? 'मागूर सूचना: उच्च प्रथिनयुक्त न खाल्लेले बुडणारे खाद्य पाणी दूषित होण्यापूर्वी काढून टाका.' : 'Catfish note: Promptly remove uneaten high-protein sinking feed to avoid water fouling.'}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* C. GREEN FODDER OBSERVATION (Grass Carp) */}
+              {observationMethod === 'green_fodder_frame' && (
+                <div className="space-y-2 pt-1">
+                  <label htmlFor="fodderObsSelect" className="block text-xs font-bold text-emerald-950">
+                    {t.observation?.greenFodderObs || (lang === 'mr' ? 'हिरवा चारा फ्रेम निरीक्षण (१२ तासांनंतर):' : 'Green Fodder Frame Observation:')}
+                  </label>
+                  <select
+                    id="fodderObsSelect"
+                    value={fodderObs}
+                    onChange={(e) => setFodderObs(e.target.value)}
+                    className="w-full h-11 px-3 rounded-xl bg-white border border-emerald-300 text-slate-900 font-bold text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  >
+                    <option value="none">{lang === 'mr' ? '-- निरीक्षण निवडा --' : '-- Select Observation --'}</option>
+                    {GREEN_FODDER_OBSERVATIONS.map((obs) => (
+                      <option key={obs.id} value={obs.id}>
+                        {lang === 'mr' ? obs.label_mr : obs.label}
+                      </option>
+                    ))}
+                  </select>
+                  {fodderObs === 'fodder_remains_over_12h' && (
+                    <div className="p-3 bg-rose-50 border-2 border-rose-300 rounded-xl text-xs space-y-1 text-rose-950 font-bold">
+                      <div className="flex items-center gap-1.5 text-rose-700">
+                        <AlertOctagon className="w-4 h-4 shrink-0" />
+                        <span>{lang === 'mr' ? 'गंभीर सूचना: १२ तासांनंतरही चारा शिल्लक!' : 'Alert: Fodder Remains After 12 Hours!'}</span>
+                      </div>
+                      <p className="text-[11px] text-rose-900 font-medium">
+                        {lang === 'mr'
+                          ? 'तळ्याची स्थिती तपासेपर्यंत नवीन ताजा चारा टाकू नका. पूरक गोळी खाद्याचे वेगळे निरीक्षण करा.'
+                          : 'Flagged condition: Do not add fresh green fodder until pond condition is reviewed. Monitor supplementary pellets separately.'}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* D. VANNAMEI CHECK-TRAY SPECIFIC CALCULATIONS & INDICATORS */}
+              {isVannamei && (
+                <div className="space-y-3 pt-2 border-t border-slate-200">
+                  {/* Tray Feed Grams & Interval Calculation Card */}
+                  {vannameiTrayCalc && (
+                    <div className="p-3 bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-300 rounded-xl text-xs space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="font-extrabold text-orange-950 flex items-center gap-1">
+                          <Scale className="w-3.5 h-3.5 text-orange-700" />
+                          <span>{t.observation?.checkTrayGrams || (lang === 'mr' ? 'चेक-ट्रे खाद्य नमुना:' : 'Check-Tray Feed Sample:')}</span>
+                        </span>
+                        <span className="text-base font-black text-orange-950 bg-white px-2.5 py-0.5 rounded-lg border border-orange-300">
+                          {vannameiTrayCalc.trayFeedG} g / tray
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-[11px] text-orange-900 border-t border-orange-200/70 pt-1">
+                        <span>{lang === 'mr' ? 'तपासणी वेळ:' : 'Checking Interval:'} <strong className="font-bold">{vannameiTrayCalc.checkingInterval}</strong></span>
+                        <span className="text-[10px] text-orange-800">({vannameiTrayCalc.trayRatePerKg} g/kg feed)</span>
+                      </div>
+                      <p className="text-[10px] text-orange-900/80 italic leading-snug">
+                        {lang === 'mr'
+                          ? '* हा ट्रे नमुना केवळ निरीक्षणासाठी आहे. तळ्याच्या दैनंदिन आहारात अतिरिक्त खाद्य म्हणून जोडला जात नाही.'
+                          : '* Tray quantity is a monitoring sample only; not added to the pond\'s daily feed requirement as extra feed.'}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Initial Response Note */}
+                  <div className="p-2 bg-blue-50/80 border border-blue-200 rounded-lg text-[11px] text-blue-900">
+                    <strong>ℹ️ {lang === 'mr' ? 'सुरुवातीचा प्रतिसाद:' : 'Initial Response:'}</strong> {VANNAMEI_INITIAL_RESPONSE_NOTE}
+                  </div>
+
+                  {/* Faecal Length & Colour & Sand Indicators */}
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <label htmlFor="faecalLenSelect" className="block text-[11px] font-bold text-slate-700 mb-1">
+                        {lang === 'mr' ? 'विष्ठा लांबी:' : 'Faecal Length:'}
+                      </label>
+                      <select
+                        id="faecalLenSelect"
+                        value={vannameiFaecalLength}
+                        onChange={(e) => setVannameiFaecalLength(e.target.value)}
+                        className="w-full h-9 px-2 rounded-lg bg-white border border-slate-300 text-xs font-semibold"
+                      >
+                        <option value="short">{lang === 'mr' ? 'लहान (योग्य आहार)' : 'Short (Proper feeding)'}</option>
+                        <option value="long">{lang === 'mr' ? 'लांब/पूर्ण (संभाव्य अतिखाद्य)' : 'Long/Full (Possible overfeeding)'}</option>
+                        <option value="normal">{lang === 'mr' ? 'सामान्य' : 'Normal'}</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label htmlFor="faecalColSelect" className="block text-[11px] font-bold text-slate-700 mb-1">
+                        {lang === 'mr' ? 'विष्ठा रंग:' : 'Faecal Colour:'}
+                      </label>
+                      <select
+                        id="faecalColSelect"
+                        value={vannameiFaecalColour}
+                        onChange={(e) => setVannameiFaecalColour(e.target.value)}
+                        className="w-full h-9 px-2 rounded-lg bg-white border border-slate-300 text-xs font-semibold"
+                      >
+                        <option value="feed_coloured">{lang === 'mr' ? 'खाद्यासारखा (योग्य)' : 'Feed-coloured (Proper)'}</option>
+                        <option value="dark_brown">{lang === 'mr' ? 'गडद तपकिरी/काळा (संभाव्य कमी)' : 'Dark-brown/black (Underfeed)'}</option>
+                        <option value="normal">{lang === 'mr' ? 'सामान्य' : 'Normal'}</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-800">
+                    <input
+                      type="checkbox"
+                      checked={vannameiSandPresent}
+                      onChange={(e) => setVannameiSandPresent(e.target.checked)}
+                      className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+                    />
+                    <span>{t.observation?.sandPresent || (lang === 'mr' ? 'ट्रेमध्ये वाळू किंवा लहान खडे आढळले (संभाव्य कमी अन्नाचे लक्षण)' : 'Sand or small pebbles in tray (Possible underfeeding indicator)')}</span>
+                  </label>
+                </div>
+              )}
+
+              {/* Shared Generic Tray Observation Dropdown */}
+              <div className="pt-2 border-t border-slate-200">
+                <label htmlFor="traySelect" className="block text-xs font-bold text-slate-800 mb-1">
+                  {t.feedTracking?.trayObservation || (lang === 'mr' ? 'खाद्य शिल्लक स्थिती (सर्वसामान्य):' : 'Tray Consumption Status:')}
+                </label>
+                <select
+                  id="traySelect"
+                  value={trayObservation}
+                  onChange={(e) => setTrayObservation(e.target.value)}
+                  className="w-full h-10 px-3 rounded-xl bg-white border border-slate-300 text-slate-900 font-semibold text-xs focus:outline-none focus:ring-2 focus:ring-teal-500 cursor-pointer"
+                >
+                  {FEEDING_TRAY_OBSERVATIONS.map((obs) => (
+                    <option key={obs.id} value={obs.id}>
+                      {lang === 'mr' ? obs.label_mr : obs.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* ========================================================================= */}
+            {/* SECTION 4: ENVIRONMENTAL ASSESSMENT & OVERRIDE SAFETY HIERARCHY */}
+            {/* ========================================================================= */}
+            <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+              <div className="flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => setShowEnvironmentalPanel(!showEnvironmentalPanel)}
+                  className="flex items-center gap-2 text-left font-black text-xs text-slate-900 uppercase tracking-wider cursor-pointer hover:text-teal-700"
+                >
+                  <Activity className="w-4 h-4 text-teal-600" />
+                  <span>{t.environmental?.title || (lang === 'mr' ? 'पर्यावरणीय मूल्यमापन व सुरक्षित नियम' : 'Environmental Assessment & Overrides')}</span>
+                  <span className="text-[10px] text-slate-400 font-normal">({showEnvironmentalPanel ? (lang === 'mr' ? 'बंद करा' : 'Hide') : (lang === 'mr' ? 'पहा / भरा' : 'Show')})</span>
+                </button>
+                {environmentalEval?.hasOverride ? (
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                    environmentalEval.isCritical
+                      ? 'bg-rose-100 text-rose-900 border border-rose-300'
+                      : 'bg-amber-100 text-amber-900 border border-amber-300'
+                  }`}>
+                    {environmentalEval.isCritical ? (lang === 'mr' ? '⚠️ आहार थांबवा' : '⚠️ Halt Meal') : `${environmentalEval.adjustmentPercent}% ${lang === 'mr' ? 'कपात' : 'Cut'}`}
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                    {lang === 'mr' ? 'सामान्य' : 'Normal'}
+                  </span>
+                )}
+              </div>
+
+              {/* Collapsible Content */}
+              {showEnvironmentalPanel && (
+                <div className="space-y-3 pt-2 border-t border-slate-200 animate-fadeIn">
+                  {/* Dissolved Oxygen & Fish Piping */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <label htmlFor="doInput" className="block text-[11px] font-bold text-slate-700 mb-1">
+                        {t.environmental?.dissolvedOxygen || (lang === 'mr' ? 'विद्राव्य प्राणवायू (DO mg/L):' : 'Dissolved Oxygen (DO mg/L):')}
+                      </label>
+                      <input
+                        id="doInput"
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        value={dissolvedOxygen}
+                        onChange={(e) => setDissolvedOxygen(e.target.value)}
+                        placeholder="e.g. 5.5"
+                        className="w-full h-9 px-3 rounded-xl bg-white border border-slate-300 text-slate-900 font-bold text-xs focus:outline-none focus:ring-2 focus:ring-teal-500"
+                      />
+                    </div>
+
+                    <div className="flex items-center pt-5">
+                      <label className="flex items-center gap-2 cursor-pointer font-bold text-rose-900 text-xs">
+                        <input
+                          type="checkbox"
+                          checked={isFishPiping}
+                          onChange={(e) => setIsFishPiping(e.target.checked)}
+                          className="h-4 w-4 rounded border-rose-400 text-rose-600 focus:ring-rose-500"
+                        />
+                        <span>{t.environmental?.fishPiping || (lang === 'mr' ? 'मासे पृष्ठभागावर हवेसाठी धडपडत आहेत' : 'Fish piping/gasping at surface')}</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Water Temperature */}
+                  <div>
+                    <label htmlFor="tempInput" className="block text-[11px] font-bold text-slate-700 mb-1">
+                      {t.environmental?.temperature || (lang === 'mr' ? 'पाण्याचे तापमान (°C):' : 'Water Temperature (°C):')}
+                    </label>
+                    <input
+                      id="tempInput"
+                      type="number"
+                      step="0.5"
+                      value={waterTemperature}
+                      onChange={(e) => setWaterTemperature(e.target.value)}
+                      placeholder="e.g. 28.0"
+                      className="w-full h-9 px-3 rounded-xl bg-white border border-slate-300 text-slate-900 font-bold text-xs focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    />
+                  </div>
+
+                  {/* Weather, Handling, Chemical Treatment */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <label htmlFor="weatherSelect" className="block text-[11px] font-bold text-slate-700 mb-1">
+                        {t.environmental?.weather || (lang === 'mr' ? 'हवामान स्थिती:' : 'Weather Condition:')}
+                      </label>
+                      <select
+                        id="weatherSelect"
+                        value={weatherCondition}
+                        onChange={(e) => setWeatherCondition(e.target.value)}
+                        className="w-full h-9 px-2 rounded-lg bg-white border border-slate-300 text-xs font-semibold"
+                      >
+                        <option value="normal">{lang === 'mr' ? 'सामान्य सूर्यप्रकाश / सौम्य' : 'Normal / Sunny'}</option>
+                        <option value="overcast_heavy_rain">{lang === 'mr' ? 'सतत ढगाळ किंवा मुसळधार पाऊस' : 'Continuous Overcast / Heavy Rain'}</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label htmlFor="handlingSelect" className="block text-[11px] font-bold text-slate-700 mb-1">
+                        {t.environmental?.handling || (lang === 'mr' ? 'मासे हाताळणी / जाळे ओढणे:' : 'Handling / Netting:')}
+                      </label>
+                      <select
+                        id="handlingSelect"
+                        value={handlingCondition}
+                        onChange={(e) => setHandlingCondition(e.target.value)}
+                        className="w-full h-9 px-2 rounded-lg bg-white border border-slate-300 text-xs font-semibold"
+                      >
+                        <option value="none">{lang === 'mr' ? 'काहीही नाही' : 'None'}</option>
+                        <option value="recently_netted">{lang === 'mr' ? 'आज जाळे ओढले / नमुना घेतला' : 'Recently netted / sampled / harvested'}</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-800">
+                    <input
+                      type="checkbox"
+                      checked={isChemicalTreatment}
+                      onChange={(e) => setIsChemicalTreatment(e.target.checked)}
+                      className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+                    />
+                    <span>{t.environmental?.treatmentDay || (lang === 'mr' ? 'आज रासायनिक किंवा औषधी उपचार केले आहेत' : 'Chemical or therapeutic treatment day')}</span>
+                  </label>
+                </div>
+              )}
+
+              {/* Transparent Safety Hierarchy Status Banner (Section 4) */}
+              <div className="p-3 bg-white border border-slate-200 rounded-xl text-xs space-y-1">
+                <div className="flex items-center justify-between text-[11px] font-bold">
+                  <span className="text-slate-500 uppercase tracking-wider">
+                    {lang === 'mr' ? 'पारदर्शक सुरक्षा प्राधान्यक्रम:' : 'Safety Override Precedence:'}
+                  </span>
+                  <span className="font-extrabold text-teal-800">
+                    {sessionPlan?.hierarchyName || 'Fishry Base'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-800 font-semibold leading-snug">
+                  {environmentalEval?.hasOverride 
+                    ? environmentalEval.reason 
+                    : (lang === 'mr' 
+                        ? 'कोणताही पर्यावरणीय अधिलिखित नियम लागू नाही (आदर्श स्थिती गृहीत न धरता; आधारभूत गणना सक्रिय).' 
+                        : 'No environmental override applied (not assuming ideal conditions; baseline calculation active).')}
+                </p>
+              </div>
+            </div>
+
+            {/* VANNAMEI CRITICAL POND CONDITIONS (Preserved from existing scope) */}
             {isVannamei && (
               <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-2.5 animate-fadeIn">
                 <div className="flex items-center justify-between">
@@ -1522,12 +2353,6 @@ export default function FeedCalculator({
                     {lang === 'mr' ? 'रूढीवादी प्राधान्य' : 'Conservative Priority'}
                   </span>
                 </div>
-                <p className="text-[11px] text-slate-600">
-                  {lang === 'mr' 
-                    ? 'अनेक परिस्थिती लागू असल्यास सर्वात सुरक्षित (रूढीवादी) कृतीला प्राधान्य दिले जाईल (कपातींची आंधळी बेरीज केली जाणार नाही).'
-                    : 'When multiple conditions apply, the system prioritizes the most conservative appropriate action without blind stacking.'}
-                </p>
-
                 <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
                   {VANNAMEI_CRITICAL_CONDITIONS.map((cond) => {
                     const isChecked = criticalConditions.includes(cond.id);
@@ -1618,32 +2443,85 @@ export default function FeedCalculator({
                   )}
                 </div>
 
-                {/* 2. Morning / Evening 50-50 Split Cards */}
-                <div className="grid grid-cols-2 gap-3">
-                  {/* Morning Feed */}
-                  <div className="bg-white/5 rounded-2xl p-3 sm:p-4 border border-white/10">
-                    <div className="flex items-center gap-1.5 text-xs text-amber-200 font-semibold mb-1">
-                      <Sun className="w-4 h-4 text-amber-300" />
-                      <span>{t.calculator.morningFeed}</span>
+                {/* 2. Feeding Sessions Breakdown */}
+                {isVannamei ? (
+                  <div className="space-y-1.5">
+                    <span className="text-[11px] font-bold text-teal-200 block uppercase tracking-wider">
+                      {lang === 'mr' ? 'व्हॅनामेई ४ दैनिक सत्रे (प्रत्येकी २५%):' : 'Vannamei 4 Daily Sessions (25% each):'}
+                    </span>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      {VANNAMEI_SESSIONS.map((sess) => {
+                        const sessKg = (calculationResult.calculatedFeed || calculationResult.dailyFeed || 0) * 0.25;
+                        const trayG = vannameiTrayCalc ? Math.round(sessKg * vannameiTrayCalc.trayRatePerKg) : 0;
+                        const isCurrent = selectedSession === sess.id;
+                        return (
+                          <div
+                            key={sess.id}
+                            className={`p-2.5 rounded-xl border text-center transition-all ${
+                              isCurrent
+                                ? 'bg-amber-400/20 border-amber-300 text-amber-200 shadow-xs'
+                                : 'bg-white/5 border-white/10 text-white'
+                            }`}
+                          >
+                            <span className="block text-[11px] font-bold text-teal-200">{sess.time}</span>
+                            <span className="block text-sm font-extrabold">{formatDisplayNumber(sessKg, 2)} kg</span>
+                            <span className="block text-[10px] text-amber-300">Tray: {trayG}g</span>
+                          </div>
+                        );
+                      })}
                     </div>
-                    <div className="text-xl sm:text-2xl font-bold text-white">
-                      {formatDisplayNumber(calculationResult.morningFeed, 2)} <span className="text-xs font-normal text-teal-200">kg</span>
-                    </div>
-                    <span className="text-[10px] text-teal-300">7:00 – 8:00 AM</span>
                   </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3">
+                    {/* Morning Feed */}
+                    <div className="bg-white/5 rounded-2xl p-3 sm:p-4 border border-white/10">
+                      <div className="flex items-center gap-1.5 text-xs text-amber-200 font-semibold mb-1">
+                        <Sun className="w-4 h-4 text-amber-300" />
+                        <span>{t.calculator.morningFeed}</span>
+                      </div>
+                      <div className="text-xl sm:text-2xl font-bold text-white">
+                        {formatDisplayNumber(calculationResult.morningFeed, 2)} <span className="text-xs font-normal text-teal-200">kg</span>
+                      </div>
+                      <span className="text-[10px] text-teal-300">7:00 – 8:00 AM</span>
+                    </div>
 
-                  {/* Evening Feed */}
-                  <div className="bg-white/5 rounded-2xl p-3 sm:p-4 border border-white/10">
-                    <div className="flex items-center gap-1.5 text-xs text-sky-200 font-semibold mb-1">
-                      <Moon className="w-4 h-4 text-sky-300" />
-                      <span>{t.calculator.eveningFeed}</span>
+                    {/* Evening Feed */}
+                    <div className="bg-white/5 rounded-2xl p-3 sm:p-4 border border-white/10">
+                      <div className="flex items-center gap-1.5 text-xs text-sky-200 font-semibold mb-1">
+                        <Moon className="w-4 h-4 text-sky-300" />
+                        <span>{t.calculator.eveningFeed}</span>
+                      </div>
+                      <div className="text-xl sm:text-2xl font-bold text-white">
+                        {formatDisplayNumber(calculationResult.eveningFeed, 2)} <span className="text-xs font-normal text-teal-200">kg</span>
+                      </div>
+                      <span className="text-[10px] text-teal-300">4:00 – 5:00 PM</span>
                     </div>
-                    <div className="text-xl sm:text-2xl font-bold text-white">
-                      {formatDisplayNumber(calculationResult.eveningFeed, 2)} <span className="text-xs font-normal text-teal-200">kg</span>
-                    </div>
-                    <span className="text-[10px] text-teal-300">4:00 – 5:00 PM</span>
                   </div>
-                </div>
+                )}
+
+                {/* Active Selected Session Card */}
+                {sessionPlan && (
+                  <div className="p-3 bg-white/10 rounded-2xl border border-white/20 text-xs space-y-1.5">
+                    <div className="flex items-center justify-between text-teal-200 font-bold">
+                      <span className="flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5 text-amber-300" />
+                        <span>{lang === 'mr' ? 'निवडलेले सक्रिय सत्र:' : 'Selected Session Plan:'} {selectedSession.toUpperCase().replace('_', ' ')}</span>
+                      </span>
+                      <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-teal-500/30 text-teal-100 border border-teal-400/40">
+                        {sessionPlan.hierarchyName}
+                      </span>
+                    </div>
+                    <div className="flex items-baseline justify-between text-white font-extrabold">
+                      <span className="text-[11px] text-teal-100">{lang === 'mr' ? 'सत्र आधारभूत / प्रस्तावित:' : 'Session Base / Proposed:'}</span>
+                      <span className="text-lg text-amber-300">
+                        {formatDisplayNumber(sessionPlan.baseSessionFeed, 2)} kg → {formatDisplayNumber(sessionPlan.proposedQuantity, 2)} kg
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-teal-100/90 leading-tight">
+                      {sessionPlan.reason}
+                    </p>
+                  </div>
+                )}
 
                 {/* 3. Biomass & Rate Summary Bar */}
                 <div className="grid grid-cols-3 gap-2 bg-black/20 rounded-2xl p-3 border border-white/10 text-center">
@@ -1735,18 +2613,28 @@ export default function FeedCalculator({
               <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 space-y-1">
                 <div className="flex items-center justify-between text-xs">
                   <span className="font-bold text-slate-700">
-                    1. {t.feedTracking?.calculatedRequired || (lang === 'mr' ? 'आवश्यक गणना केलेले खाद्य' : 'Calculated Feed Required')}:
+                    1. {t.feedTracking?.calculatedRequired || (lang === 'mr' ? 'आवश्यक गणना केलेले खाद्य (सत्र आधारभूत)' : 'Calculated Feed Required (Session Baseline)')}:
                   </span>
-                  <span className="font-mono text-slate-500 font-medium">Fishry Estimate</span>
+                  <span className="font-mono text-slate-500 font-medium">
+                    {selectedSession.toUpperCase().replace('_', ' ')}
+                  </span>
                 </div>
                 <div className="flex items-baseline justify-between">
-                  <span className="text-2xl font-black text-slate-900">
-                    {formatDisplayNumber(calculationResult.calculatedFeed || calculationResult.dailyFeed, 2)}{' '}
-                    <span className="text-xs font-normal text-slate-500">kg/day</span>
-                  </span>
+                  <div>
+                    <span className="text-2xl font-black text-slate-900">
+                      {formatDisplayNumber(sessionPlan?.baseSessionFeed ?? (calculationResult.calculatedFeed || calculationResult.dailyFeed), 2)}{' '}
+                      <span className="text-xs font-normal text-slate-500">kg/session</span>
+                    </span>
+                    <span className="block text-[11px] text-slate-500 mt-0.5">
+                      {lang === 'mr' ? 'दैनिक एकूण:' : 'Daily baseline:'} {formatDisplayNumber(calculationResult.calculatedFeed || calculationResult.dailyFeed, 2)} kg/day
+                    </span>
+                  </div>
                   {calculationResult.feedPriceNum > 0 && (
-                    <span className="text-xs font-semibold text-slate-500">
-                      ≈ ₹{formatDisplayNumber(calculationResult.dailyFeedCost, 0)}
+                    <span className="text-xs font-semibold text-slate-500 text-right">
+                      ≈ ₹{formatDisplayNumber(((sessionPlan?.baseSessionFeed || 0) * (Number(feedPrice) || 0)), 0)}
+                      <span className="block text-[10px] text-slate-400">
+                        ({lang === 'mr' ? 'दैनिक ₹' : 'Daily ₹'}{formatDisplayNumber(calculationResult.dailyFeedCost, 0)})
+                      </span>
                     </span>
                   )}
                 </div>
@@ -2165,22 +3053,22 @@ export default function FeedCalculator({
 
             <div className="space-y-1">
               <h3 className="text-lg font-extrabold text-slate-900">
-                {lang === 'mr' ? 'दैनिक नोंद यशस्वीरित्या जतन झाली!' : 'Daily Feed Logged Successfully!'}
+                {lang === 'mr' ? 'सत्र नोंद यशस्वीरित्या जतन झाली!' : 'Feed Record Logged Successfully!'}
               </h3>
               <p className="text-xs text-slate-500 font-medium">
-                {savedModalInfo.pondName} • {savedModalInfo.species}
+                {savedModalInfo.pondName} • {savedModalInfo.species} • <strong className="text-teal-700 font-bold">{savedModalInfo.session?.toUpperCase().replace('_', ' ')}</strong> ({savedModalInfo.sessionDate})
               </p>
             </div>
 
             {/* Quick Numbers Card with 3-tier Accountability */}
             <div className="bg-emerald-50/80 border border-emerald-200 rounded-2xl p-3.5 space-y-2 text-left text-xs">
               <div className="flex items-center justify-between border-b border-emerald-200/60 pb-1.5">
-                <span className="text-slate-600">{t.feedTracking?.calculatedRequired || (lang === 'mr' ? 'गणना केलेले खाद्य:' : 'Calculated Feed:')}</span>
-                <span className="font-bold text-slate-900">{formatDisplayNumber(savedModalInfo.calculatedFeed, 2)} kg</span>
+                <span className="text-slate-600">{t.feedTracking?.calculatedRequired || (lang === 'mr' ? 'सत्र आधारभूत खाद्य:' : 'Session Base Feed:')}</span>
+                <span className="font-bold text-slate-900">{formatDisplayNumber(savedModalInfo.sessionBaseFeed, 2)} kg <span className="text-[10px] text-slate-400 font-normal">({lang === 'mr' ? 'दैनिक' : 'daily'} {formatDisplayNumber(savedModalInfo.dailyFeed, 2)}kg)</span></span>
               </div>
               <div className="flex items-center justify-between border-b border-emerald-200/60 pb-1.5">
-                <span className="text-slate-600">{t.feedTracking?.confirmedQuantity || (lang === 'mr' ? 'निश्चित केलेले प्रमाण:' : 'Confirmed Quantity:')}</span>
-                <span className="font-extrabold text-teal-900">{formatDisplayNumber(savedModalInfo.confirmedFeed, 2)} kg</span>
+                <span className="text-slate-600">{lang === 'mr' ? 'प्रस्तावित / निश्चित प्रमाण:' : 'Proposed / Confirmed:'}</span>
+                <span className="font-extrabold text-teal-900">{formatDisplayNumber(savedModalInfo.proposedFeed, 2)} kg → {formatDisplayNumber(savedModalInfo.confirmedFeed, 2)} kg</span>
               </div>
               <div className="flex items-center justify-between border-b border-emerald-200/60 pb-1.5">
                 <span className="text-slate-600">{t.feedTracking?.actualGiven || (lang === 'mr' ? 'प्रत्यक्ष दिलेले खाद्य:' : 'Actual Feed Given:')}</span>

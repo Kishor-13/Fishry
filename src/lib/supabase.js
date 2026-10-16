@@ -229,6 +229,31 @@ export async function saveFeedRecord(record, farmerId = null) {
     pond_id: record.pond_id || null,
     pond_name: record.pond_name || '',
     notes: record.notes || '',
+
+    // Finfish & Crustacean Integration Fields
+    session: record.session || 'morning',
+    session_date: record.session_date || (record.created_at ? record.created_at.split('T')[0] : new Date().toISOString().split('T')[0]),
+    session_baseline_feed: (record.session_baseline_feed !== null && record.session_baseline_feed !== undefined && !isNaN(Number(record.session_baseline_feed))) ? Number(record.session_baseline_feed) : null,
+    observation_method: record.observation_method || '',
+    observation: record.observation || record.tray_observation || '',
+    proposed_adjustment_percent: (record.proposed_adjustment_percent !== null && record.proposed_adjustment_percent !== undefined && !isNaN(Number(record.proposed_adjustment_percent))) ? Number(record.proposed_adjustment_percent) : 0,
+    observation_guidance: record.observation_guidance || '',
+    observation_guidance_mr: record.observation_guidance_mr || '',
+    mud_obscured: Boolean(record.mud_obscured),
+    is_magur_delayed_inspection: Boolean(record.is_magur_delayed_inspection),
+    check_tray_feed_g: (record.check_tray_feed_g !== null && record.check_tray_feed_g !== undefined && !isNaN(Number(record.check_tray_feed_g))) ? Number(record.check_tray_feed_g) : null,
+    check_tray_rate_g_per_kg: (record.check_tray_rate_g_per_kg !== null && record.check_tray_rate_g_per_kg !== undefined && !isNaN(Number(record.check_tray_rate_g_per_kg))) ? Number(record.check_tray_rate_g_per_kg) : null,
+    checking_interval_str: record.checking_interval_str || '',
+    faecal_length: record.faecal_length || '',
+    faecal_colour: record.faecal_colour || '',
+    sand_present: Boolean(record.sand_present),
+    dissolved_oxygen: (record.dissolved_oxygen !== null && record.dissolved_oxygen !== undefined && record.dissolved_oxygen !== '' && !isNaN(Number(record.dissolved_oxygen))) ? Number(record.dissolved_oxygen) : null,
+    is_fish_piping: Boolean(record.is_fish_piping),
+    water_temperature: (record.water_temperature !== null && record.water_temperature !== undefined && record.water_temperature !== '' && !isNaN(Number(record.water_temperature))) ? Number(record.water_temperature) : null,
+    weather_condition: record.weather_condition || 'normal',
+    handling_condition: record.handling_condition || 'none',
+    is_chemical_treatment: Boolean(record.is_chemical_treatment),
+    environmental_override_reason: record.environmental_override_reason || '',
   };
 
   // Save to local storage first

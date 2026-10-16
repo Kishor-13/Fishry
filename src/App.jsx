@@ -191,6 +191,7 @@ export default function App() {
             rulesList={rulesList}
             ponds={ponds}
             initialPondId={selectedPondForCalc}
+            feedHistory={feedHistory}
             onSaveRecord={handleSaveRecord}
             onNavigateToDashboard={() => setActiveTab('dashboard')}
             onNavigateToHistory={() => setActiveTab('history')}

@@ -402,3 +402,357 @@ export const FRESHWATER_PRAWN_STAGES = [
   },
 ];
 
+// ==============================================================================
+// OBSERVATION METHODS & SPECIES MAPPING
+// ==============================================================================
+export const OBSERVATION_METHODS = {
+  FLOATING_FEED: 'FLOATING_FEED',
+  SUBMERGED_TRAY: 'SUBMERGED_TRAY',
+  SUSPENDED_TRAY: 'SUSPENDED_TRAY',
+  BOTTOM_TRAY: 'BOTTOM_TRAY',
+  GREEN_FODDER_FRAME: 'GREEN_FODDER_FRAME',
+  VANNAMEI_CHECK_TRAY: 'VANNAMEI_CHECK_TRAY',
+  PRAWN_FEED_TRAY: 'PRAWN_FEED_TRAY',
+};
+
+export function getSpeciesDefaultObservationMethod(speciesId) {
+  const sp = (speciesId || '').toLowerCase();
+  if (sp.includes('catla')) return OBSERVATION_METHODS.FLOATING_FEED;
+  if (sp.includes('tilapia')) return OBSERVATION_METHODS.FLOATING_FEED;
+  if (sp.includes('pangasius')) return OBSERVATION_METHODS.FLOATING_FEED;
+  if (sp.includes('rohu')) return OBSERVATION_METHODS.SUBMERGED_TRAY;
+  if (sp.includes('mrigal')) return OBSERVATION_METHODS.BOTTOM_TRAY;
+  if (sp.includes('common_carp') || sp.includes('common carp')) return OBSERVATION_METHODS.BOTTOM_TRAY;
+  if (sp.includes('magur')) return OBSERVATION_METHODS.SUBMERGED_TRAY;
+  if (sp.includes('grass_carp') || sp.includes('grass carp')) return OBSERVATION_METHODS.GREEN_FODDER_FRAME;
+  if (sp.includes('vannamei')) return OBSERVATION_METHODS.VANNAMEI_CHECK_TRAY;
+  if (sp.includes('prawn') || sp.includes('macrobrachium')) return OBSERVATION_METHODS.PRAWN_FEED_TRAY;
+  return OBSERVATION_METHODS.FLOATING_FEED;
+}
+
+// ==============================================================================
+// 1. FLOATING-FEED OBSERVATION RULES (Tilapia, Pangasius, Catla)
+// User-provided proposed reference rules (not officially validated universal prescriptions).
+// ==============================================================================
+export const FLOATING_FEED_OBSERVATIONS = [
+  {
+    id: 'none',
+    label: 'No observation recorded yet',
+    label_mr: 'अद्याप कोणतेही निरीक्षण नोंदवलेले नाही',
+    interpretation: 'No observation available',
+    interpretation_mr: 'निरीक्षण उपलब्ध नाही',
+    action: 'NONE',
+    proposed_adjustment: 0,
+    adjustmentPercent: 0,
+    guidance: 'No observation recorded. Maintain calculated baseline.',
+    guidance_mr: 'कोणतेही निरीक्षण नाही. गणना केलेले मूळ प्रमाण कायम ठेवा.',
+  },
+  {
+    id: 'cleared_under_10min',
+    label: 'Feed cleared in less than 10 minutes',
+    label_mr: '१० मिनिटांपेक्षा कमी वेळेत खाद्य संपले',
+    interpretation: 'Vigorous feeding; possible insufficient ration',
+    interpretation_mr: 'तीव्र भूक व जलद खाणे; खाद्य अपुरे असण्याची शक्यता',
+    action: 'SUGGEST_INCREASE_5_10',
+    proposed_adjustment: 7.5,
+    adjustmentPercent: 10, // Max of 5-10% range or 7.5% mid
+    min_adj: 5,
+    max_adj: 10,
+    guidance: 'Suggest reviewing a 5–10% increase for the corresponding next-day session.',
+    guidance_mr: 'पुढील दिवसाच्या संबंधित वेळेसाठी खाद्यात ५–१०% वाढ करण्याचा विचार सुचवला जातो.',
+  },
+  {
+    id: 'cleared_15_30min',
+    label: 'Feed finishes within 15–30 minutes',
+    label_mr: '१५–३० मिनिटांत खाद्य संपले',
+    interpretation: 'Appropriate feeding response',
+    interpretation_mr: 'योग्य खाद्य प्रतिसाद',
+    action: 'MAINTAIN',
+    proposed_adjustment: 0,
+    adjustmentPercent: 0,
+    min_adj: 0,
+    max_adj: 0,
+    guidance: 'Appropriate feeding response. Maintain current ration.',
+    guidance_mr: 'योग्य खाद्य प्रतिसाद. सध्याचे खाद्य प्रमाण कायम ठेवा.',
+  },
+  {
+    id: 'remains_5_10pct_30min',
+    label: '5–10% pellets remain after 30 minutes',
+    label_mr: '३० मिनिटांनंतर ५–१०% गोळ्या शिल्लक',
+    interpretation: 'Possible satiety or stress',
+    interpretation_mr: 'माशांचे पोट भरलेले असणे किंवा ताण असण्याची शक्यता',
+    action: 'SUGGEST_REDUCE_10_15',
+    proposed_adjustment: -12.5,
+    adjustmentPercent: -12.5,
+    min_adj: -15,
+    max_adj: -10,
+    guidance: 'Suggest a 10–15% reduction for the corresponding next-day session.',
+    guidance_mr: 'पुढील दिवसाच्या संबंधित वेळेसाठी खाद्यात १०–१५% कपात सुचवली जाते.',
+  },
+  {
+    id: 'remains_over_20pct_30min',
+    label: 'More than 20% remains after 30 minutes',
+    label_mr: '३० मिनिटांनंतर २०% पेक्षा जास्त खाद्य शिल्लक',
+    interpretation: 'Possible overfeeding or water-quality stress',
+    interpretation_mr: 'जास्त खाद्य किंवा पाण्याच्या गुणवत्तेचा ताण असण्याची शक्यता',
+    action: 'SUGGEST_REDUCE_30_50',
+    proposed_adjustment: -40,
+    adjustmentPercent: -40,
+    min_adj: -50,
+    max_adj: -30,
+    guidance: 'Flag condition and propose a 30–50% reduction for the corresponding next-day session.',
+    guidance_mr: 'परिस्थिती लक्षात घेऊन पुढील दिवसाच्या संबंधित वेळेसाठी ३०–५०% कपात प्रस्तावित करा.',
+  },
+  {
+    id: 'fish_ignore_or_deep',
+    label: 'Fish ignore pellets or remain unusually deep',
+    label_mr: 'मासे खाद्याकडे दुर्लक्ष करतात किंवा असामान्यपणे तळाशी राहतात',
+    interpretation: 'Possible oxygen, health or environmental problem',
+    interpretation_mr: 'ऑक्सिजनची कमतरता, आरोग्य किंवा पर्यावरणाची समस्या असण्याची शक्यता',
+    action: 'STOP_MEAL',
+    proposed_adjustment: -100,
+    adjustmentPercent: -100,
+    guidance: 'Recommend stopping the meal and checking water quality; alert farmer to aeration where appropriate.',
+    guidance_mr: 'सदर जेवण थांबवा आणि पाण्याची गुणवत्ता तपासा; आवश्यक असल्यास तात्काळ वायुवीजन (aeration) सुरू करा.',
+  },
+  {
+    id: 'unclassified_floating',
+    label: 'Unclassified observation (e.g. 10–15 min or 15–20% remaining)',
+    label_mr: 'अवर्गीकृत निरीक्षण (उदा. १०–१५ मिनिटे किंवा १५–२०% शिल्लक)',
+    interpretation: 'Observation falls in gap range; farmer review required',
+    interpretation_mr: 'निरीक्षण श्रेणीबाहेर आहे; शेतकऱ्याने स्वतः पडताळणी करावी',
+    action: 'FARMER_REVIEW',
+    proposed_adjustment: 0,
+    adjustmentPercent: 0,
+    guidance: 'Observation falls in unclassified gap range. Request farmer review and retain current safe baseline pending confirmation.',
+    guidance_mr: 'निरीक्षण अवर्गीकृत श्रेणीत येते. शेतकऱ्याने स्वतः परिस्थिती तपासावी आणि खात्री होईपर्यंत मूळ सुरक्षित प्रमाण कायम ठेवावे.',
+  },
+];
+
+// ==============================================================================
+// 2. SUBMERGED TRAY OR FEEDING-BAG OBSERVATION RULES (Rohu, Mrigal, Common Carp, Magur)
+// User-provided proposed reference rules (checked after 2–3 hours).
+// ==============================================================================
+export const SUBMERGED_TRAY_OBSERVATIONS = [
+  {
+    id: 'none',
+    label: 'No observation recorded yet',
+    label_mr: 'अद्याप कोणतेही निरीक्षण नोंदवलेले नाही',
+    interpretation: 'No observation available',
+    interpretation_mr: 'निरीक्षण उपलब्ध नाही',
+    action: 'NONE',
+    proposed_adjustment: 0,
+    adjustmentPercent: 0,
+    guidance: 'No observation recorded. Maintain calculated baseline.',
+    guidance_mr: 'कोणतेही निरीक्षण नाही. गणना केलेले मूळ प्रमाण कायम ठेवा.',
+  },
+  {
+    id: 'tray_clean',
+    label: 'Tray completely clean',
+    label_mr: 'ट्रे पूर्णपणे स्वच्छ / खाद्य पूर्ण संपले',
+    interpretation: 'High feeding activity',
+    interpretation_mr: 'अतिशय चांगला खाद्य प्रतिसाद',
+    action: 'SUGGEST_INCREASE_5_10',
+    proposed_adjustment: 7.5,
+    adjustmentPercent: 10, // Max of 5-10% range or 7.5% mid
+    min_adj: 5,
+    max_adj: 10,
+    guidance: 'Suggest reviewing a 5–10% increase for the corresponding next-day session.',
+    guidance_mr: 'पुढील दिवसाच्या संबंधित वेळेसाठी खाद्यात ५–१०% वाढ करण्याचा विचार सुचवला जातो.',
+  },
+  {
+    id: 'tray_thin_layer_under_10pct',
+    label: 'Thin layer or crumbs, less than 10% remaining',
+    label_mr: 'बारीक थर किंवा तुकडे, १०% पेक्षा कमी शिल्लक',
+    interpretation: 'Appropriate feeding',
+    interpretation_mr: 'योग्य खाद्य प्रमाण',
+    action: 'MAINTAIN',
+    proposed_adjustment: 0,
+    adjustmentPercent: 0,
+    min_adj: 0,
+    max_adj: 0,
+    guidance: 'Appropriate feeding. Maintain current ration.',
+    guidance_mr: 'योग्य खाद्य प्रमाण. सध्याचे प्रमाण कायम ठेवा.',
+  },
+  {
+    id: 'tray_10_25pct_remaining',
+    label: '10–25% feed remaining',
+    label_mr: '१०–२५% खाद्य शिल्लक',
+    interpretation: 'Possible overfeeding or temperature-related reduction in appetite',
+    interpretation_mr: 'जास्त खाद्य किंवा तापमानामुळे भूक मंदावण्याची शक्यता',
+    action: 'SUGGEST_REDUCE_20_30',
+    proposed_adjustment: -25,
+    adjustmentPercent: -25,
+    min_adj: -30,
+    max_adj: -20,
+    guidance: 'Suggest a 20–30% reduction for the corresponding next-day session.',
+    guidance_mr: 'पुढील दिवसाच्या संबंधित वेळेसाठी खाद्यात २०–३०% कपात सुचवली जाते.',
+  },
+  {
+    id: 'tray_over_50pct_or_foul',
+    label: 'More than 50% remaining or foul dough',
+    label_mr: '५०% पेक्षा जास्त खाद्य शिल्लक किंवा खाद्य कुजलेले/घाण वास',
+    interpretation: 'Possible water-quality or health problem',
+    interpretation_mr: 'पाण्याची गुणवत्ता बिघडणे किंवा आरोग्याची समस्या',
+    action: 'STOP_MEAL',
+    proposed_adjustment: -100,
+    adjustmentPercent: -100,
+    guidance: 'Flag condition, advise removing old feed and assessing pond before next meal.',
+    guidance_mr: 'परिस्थिती गंभीर; शिल्लक जुने खाद्य काढून टाका आणि पुढील जेवणापूर्वी तळ्याची पाहणी करा.',
+  },
+  {
+    id: 'tray_unclassified_25_50pct',
+    label: 'Unclassified range (25–50% remaining)',
+    label_mr: 'अवर्गीकृत श्रेणी (२५–५०% शिल्लक)',
+    interpretation: 'Unclassified observation; farmer review required',
+    interpretation_mr: 'अवर्गीकृत निरीक्षण; शेतकऱ्याने स्वतः पडताळणी करावी',
+    action: 'FARMER_REVIEW',
+    proposed_adjustment: 0,
+    adjustmentPercent: 0,
+    guidance: 'Do not invent a rule for the unclassified 25–50% range. Review pond and appetite; retain safe baseline pending confirmation.',
+    guidance_mr: '२५–५०% अवर्गीकृत श्रेणीसाठी कोणताही स्वयंचलित नियम लागू केलेला नाही. तळ्याची पाहणी करा आणि खात्री होईपर्यंत सुरक्षित प्रमाण ठेवा.',
+  },
+];
+
+// ==============================================================================
+// 3. GRASS CARP GREEN FODDER OBSERVATION RULES
+// Green-fodder monitoring using floating frame/corral.
+// ==============================================================================
+export const GREEN_FODDER_OBSERVATIONS = [
+  {
+    id: 'none',
+    label: 'No fodder observation recorded',
+    label_mr: 'चाऱ्याचे निरीक्षण नोंदवलेले नाही',
+    interpretation: 'No observation available',
+    interpretation_mr: 'निरीक्षण उपलब्ध नाही',
+    action: 'NONE',
+    proposed_adjustment: 0,
+    adjustmentPercent: 0,
+    guidance: 'Continue normal fodder feeding.',
+    guidance_mr: 'नेहमीप्रमाणे चारा देणे सुरू ठेवा.',
+  },
+  {
+    id: 'fodder_cleared',
+    label: 'Green fodder completely cleared (< 10 hours)',
+    label_mr: 'हिरवा चारा पूर्णपणे संपला (< १० तास)',
+    interpretation: 'High forage appetite; adequate consumption',
+    interpretation_mr: 'चाऱ्याची भूक उत्तम; योग्य वापर',
+    action: 'MAINTAIN_OR_INCREASE',
+    proposed_adjustment: 0,
+    adjustmentPercent: 0,
+    guidance: 'Green fodder well consumed. Maintain or review providing fresh fodder as needed.',
+    guidance_mr: 'हिरवा चारा चांगल्या प्रकारे खाल्ला गेला आहे. गरजेनुसार ताजा चारा उपलब्ध करा.',
+  },
+  {
+    id: 'fodder_normal',
+    label: 'Normal consumption, small leftover crumbs',
+    label_mr: 'सामान्य वापर, थोडेफार उरलेले तुकडे',
+    interpretation: 'Satisfactory consumption',
+    interpretation_mr: 'समाधानकारक वापर',
+    action: 'MAINTAIN',
+    proposed_adjustment: 0,
+    adjustmentPercent: 0,
+    guidance: 'Normal fodder feeding response. Maintain current fodder ration.',
+    guidance_mr: 'चारा खाण्याचा प्रतिसाद योग्य आहे. सध्याचे प्रमाण चालू ठेवा.',
+  },
+  {
+    id: 'fodder_remains_over_12h',
+    label: 'Green fodder remains after 12 hours',
+    label_mr: '१२ तासांनंतरही हिरवा चारा शिल्लक आहे',
+    interpretation: 'Possible satiety, poor water quality, or over-rationing',
+    interpretation_mr: 'पोट भरलेले असणे, पाण्याची गुणवत्ता खराब असणे किंवा जास्त चारा दिलेला असणे',
+    action: 'FLAG_DO_NOT_ADD_FRESH',
+    proposed_adjustment: -100,
+    adjustmentPercent: -100,
+    isFlagged: true,
+    guidance: 'Green fodder remains after 12 hours. Do not add fresh fodder until pond condition is reviewed. Remove decomposing fodder to preserve dissolved oxygen.',
+    guidance_mr: '१२ तासांनंतरही चारा शिल्लक आहे. परिस्थितीची पाहणी करेपर्यंत नवीन ताजा चारा टाकू नका. विरघळलेला ऑक्सिजन टिकवण्यासाठी कुजणारा चारा पाण्यातून बाहेर काढा.',
+  },
+];
+
+// ==============================================================================
+// 4. VANNAMEI CHECK-TRAY RATE TABLE (By average shrimp body weight)
+// Formula: Tray feed (g) = feed distributed in that session (kg) × tray rate (g/kg).
+// ==============================================================================
+export const VANNAMEI_CHECK_TRAY_RATES = [
+  { min_weight: 1.5, max_weight: 4.0, rate_g_per_kg: 1.0, interval_str: '2 hours 30 minutes', interval_minutes: 150 },
+  { min_weight: 5.0, max_weight: 8.0, rate_g_per_kg: 2.0, interval_str: '2 hours', interval_minutes: 120 },
+  { min_weight: 9.0, max_weight: 13.0, rate_g_per_kg: 3.0, interval_str: '2 hours', interval_minutes: 120 },
+  { min_weight: 14.0, max_weight: 22.0, rate_g_per_kg: 4.0, interval_str: '2 hours', interval_minutes: 120 },
+  { min_weight: 23.0, max_weight: 33.0, rate_g_per_kg: 5.0, interval_str: '1 hour 30 minutes', interval_minutes: 90 },
+];
+
+export const VANNAMEI_INITIAL_RESPONSE_NOTE = {
+  en: 'Observe shrimp initial feed response before 30 seconds after feed broadcasting (distinct from the 1.5–2.5h tray retrieval interval). Check-tray quantity is a monitoring sample and must NOT be added to pond daily feed as extra feed.',
+  mr: 'खाद्य टाकल्यानंतर ३० सेकंदांच्या आत कोळंबीचा सुरुवातीचा प्रतिसाद तपासा (हे १.५–२.५ तासांच्या ट्रे काढण्याच्या वेळेपेक्षा वेगळे आहे). ट्रेमधील खाद्य हा केवळ नमुना आहे, तो तळ्याच्या दैनिक खाद्यात अतिरिक्त म्हणून जोडू नका.',
+};
+
+// Vannamei Faecal and Sand Indicators
+export const VANNAMEI_FAECAL_INDICATORS = {
+  length: [
+    { id: 'short', label: 'Short faecal length', label_mr: 'लहान विष्ठा लांबी', interpretation: 'Proper feeding response', interpretation_mr: 'योग्य खाद्य प्रतिसाद' },
+    { id: 'long', label: 'Full / long faeces', label_mr: 'लांब / पूर्ण विष्ठा', interpretation: 'Possible overfeeding', interpretation_mr: 'जास्त खाद्य असण्याची शक्यता' },
+  ],
+  colour: [
+    { id: 'feed_coloured', label: 'Feed-coloured faeces', label_mr: 'खाद्याच्या रंगाची विष्ठा', interpretation: 'Proper feeding response', interpretation_mr: 'योग्य खाद्य प्रतिसाद' },
+    { id: 'dark', label: 'Black / dark-brown faeces', label_mr: 'काळी / गडद तपकिरी विष्ठा', interpretation: 'Possible underfeeding (natural forage/detritus ingestion)', interpretation_mr: 'कमी खाद्य असण्याची शक्यता (तळातील गाळ/नैसर्गिक घटक खाणे)' },
+  ],
+  sand: [
+    { id: 'none', label: 'No sand or stones', label_mr: 'वाळू किंवा खडे नाहीत', interpretation: 'Normal tray condition', interpretation_mr: 'सामान्य स्थिती' },
+    { id: 'present', label: 'Sand or small stones in tray', label_mr: 'ट्रेमध्ये वाळू किंवा लहान खडे आढळले', interpretation: 'Possible underfeeding indicator (shrimp actively foraging bottom sediment)', interpretation_mr: 'कमी खाद्याचे संभाव्य लक्षण (कोळंबी तळातील वाळू/गाळात अन्न शोधत आहे)' },
+  ],
+};
+
+// ==============================================================================
+// 5. FEEDING SESSIONS DEFINITIONS
+// Strict session-wise mapping: Each session only learns from the same session previous day.
+// ==============================================================================
+export const DEFAULT_SESSIONS = [
+  { id: 'morning', label: 'Morning session', label_mr: 'सकाळचे सत्र', default_time: '08:00 AM', default_percent: 50 },
+  { id: 'evening', label: 'Evening session', label_mr: 'संध्याकाळचे सत्र', default_time: '05:00 PM', default_percent: 50 },
+];
+
+export const VANNAMEI_SESSIONS = [
+  { id: '7_am', label: 'Session 1: 7:00 AM (Morning)', label_mr: 'सत्र १: सकाळी ७:०० (सकाळ)', time: '7:00 AM', default_percent: 25 },
+  { id: '11_am', label: 'Session 2: 11:00 AM (Late morning)', label_mr: 'सत्र २: सकाळी ११:०० (दुपारपूर्व)', time: '11:00 AM', default_percent: 25 },
+  { id: '4_pm', label: 'Session 3: 4:00 PM (Afternoon)', label_mr: 'सत्र ३: दुपारी ४:०० (दुपार)', time: '4:00 PM', default_percent: 25 },
+  { id: '8_pm', label: 'Session 4: 8:00 PM (Evening/Night)', label_mr: 'सत्र ४: रात्री ८:०० (रात्र)', time: '8:00 PM', default_percent: 25 },
+];
+
+export const TILAPIA_EXTENDED_SESSIONS = [
+  { id: 'session_1', label: 'Meal 1 (Early Morning - 8:00 AM)', label_mr: 'जेवण १ (सकाळी ८:००)', default_percent: 25 },
+  { id: 'session_2', label: 'Meal 2 (Midday - 11:30 AM)', label_mr: 'जेवण २ (दुपारी ११:३०)', default_percent: 25 },
+  { id: 'session_3', label: 'Meal 3 (Afternoon - 2:30 PM)', label_mr: 'जेवण ३ (दुपारी २:३०)', default_percent: 25 },
+  { id: 'session_4', label: 'Meal 4 (Evening - 5:30 PM)', label_mr: 'जेवण ४ (संध्याकाळी ५:३०)', default_percent: 25 },
+];
+
+// ==============================================================================
+// 6. ENVIRONMENTAL OVERRIDES REFERENCE RULES
+// Safety precedence hierarchy: Critical distress > Species-specific > General > Base.
+// ==============================================================================
+export const ENVIRONMENTAL_CONFIG = {
+  // Dissolved Oxygen (mg/L)
+  DO: {
+    CRITICAL_THRESHOLD: 3.0,
+    STRESS_MAX: 5.0,
+    MAGUR_LOW_THRESHOLD: 2.0,
+  },
+  // Temperature (°C)
+  TEMP: {
+    EXTREME_HIGH: 32.0,
+    OPTIMAL_MIN: 26.0,
+    OPTIMAL_MAX: 31.0,
+    MILD_LOW_MIN: 20.0,
+    MILD_LOW_MAX: 25.0,
+    MODERATE_LOW_MIN: 15.0,
+    MODERATE_LOW_MAX: 20.0,
+    CRITICAL_COLD: 14.0,
+  },
+  // Warmest hours feeding note
+  WARMEST_HOURS_GUIDANCE: {
+    en: 'Water temperature is 15–20°C: Feeding response is severely reduced. Restrict feeding to 50–75% reduction and feed only during the warmest hours of the day (typically 12:00 PM – 2:00 PM).',
+    mr: 'पाण्याचे तापमान १५–२०°C आहे: भूक खूप मंदावते. खाद्यात ५०–७५% कपात करा आणि केवळ दिवसाच्या सर्वात उबदार वेळेतच (दुपारी १२:०० ते २:०० दरम्यान) खाद्य द्या.',
+  },
+};
+
+

@@ -8,7 +8,9 @@ import {
   Thermometer, 
   Droplet, 
   Scale, 
-  ShieldCheck 
+  ShieldCheck,
+  Phone,
+  User
 } from 'lucide-react';
 import { translations } from '../lib/translations';
 
@@ -126,6 +128,47 @@ export default function HelpModal({ isOpen, onClose, lang }) {
             <p className="leading-relaxed">
               {t.calculator.scientificNote}
             </p>
+          </div>
+
+          {/* Support & Contact Details */}
+          <div className="bg-teal-50/80 rounded-2xl p-4 border border-teal-200 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <h4 className="font-bold text-teal-950 text-xs sm:text-sm flex items-center gap-2">
+                <Phone className="w-4 h-4 text-teal-600" />
+                <span>{isMr ? 'मदत व शेतकरी संपर्क' : 'Help & Support'}</span>
+              </h4>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-100 text-teal-800">
+                {isMr ? 'हेल्पलाईन' : 'Helpline'}
+              </span>
+            </div>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+              <div className="bg-white p-2.5 rounded-xl border border-teal-100 flex items-center gap-2">
+                <User className="w-4 h-4 text-teal-600 shrink-0" />
+                <div>
+                  <span className="text-[10px] text-slate-400 block font-semibold">{isMr ? 'संपर्क नाव' : 'Contact Name'}:</span>
+                  <span className="font-extrabold text-slate-800">Dnyaneshwar Shelke</span>
+                </div>
+              </div>
+
+              <div className="bg-white p-2.5 rounded-xl border border-teal-100 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Phone className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <div>
+                    <span className="text-[10px] text-slate-400 block font-semibold">{isMr ? 'संपर्क नंबर' : 'Contact No'}:</span>
+                    <a href="tel:9356976062" className="font-extrabold text-teal-700 hover:underline">
+                      9356976062
+                    </a>
+                  </div>
+                </div>
+                <a
+                  href="tel:9356976062"
+                  className="px-2.5 py-1 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-[11px] transition-colors shrink-0"
+                >
+                  {isMr ? 'कॉल' : 'Call'}
+                </a>
+              </div>
+            </div>
           </div>
 
         </div>
