@@ -164,6 +164,10 @@ export function exportFeedHistoryToCsv(records, language = 'en') {
   // Prepend UTF-8 BOM (\uFEFF)
   const csvContent = '\uFEFF' + [headers.join(','), ...rows].join('\r\n');
 
+  if (typeof document === 'undefined') {
+    return csvContent;
+  }
+
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
@@ -174,4 +178,5 @@ export function exportFeedHistoryToCsv(records, language = 'en') {
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
+  return csvContent;
 }

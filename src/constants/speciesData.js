@@ -694,6 +694,9 @@ export const VANNAMEI_CHECK_TRAY_RATES = [
 export const VANNAMEI_INITIAL_RESPONSE_NOTE = {
   en: 'Observe shrimp initial feed response before 30 seconds after feed broadcasting (distinct from the 1.5–2.5h tray retrieval interval). Check-tray quantity is a monitoring sample and must NOT be added to pond daily feed as extra feed.',
   mr: 'खाद्य टाकल्यानंतर ३० सेकंदांच्या आत कोळंबीचा सुरुवातीचा प्रतिसाद तपासा (हे १.५–२.५ तासांच्या ट्रे काढण्याच्या वेळेपेक्षा वेगळे आहे). ट्रेमधील खाद्य हा केवळ नमुना आहे, तो तळ्याच्या दैनिक खाद्यात अतिरिक्त म्हणून जोडू नका.',
+  toString() {
+    return this.en;
+  }
 };
 
 // Vannamei Faecal and Sand Indicators

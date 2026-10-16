@@ -2127,7 +2127,10 @@ export default function FeedCalculator({
 
                   {/* Initial Response Note */}
                   <div className="p-2 bg-blue-50/80 border border-blue-200 rounded-lg text-[11px] text-blue-900">
-                    <strong>ℹ️ {lang === 'mr' ? 'सुरुवातीचा प्रतिसाद:' : 'Initial Response:'}</strong> {VANNAMEI_INITIAL_RESPONSE_NOTE}
+                    <strong>ℹ️ {lang === 'mr' ? 'सुरुवातीचा प्रतिसाद:' : 'Initial Response:'}</strong>{' '}
+                    {lang === 'mr'
+                      ? (VANNAMEI_INITIAL_RESPONSE_NOTE?.mr || VANNAMEI_INITIAL_RESPONSE_NOTE?.en)
+                      : (VANNAMEI_INITIAL_RESPONSE_NOTE?.en || VANNAMEI_INITIAL_RESPONSE_NOTE?.mr)}
                   </div>
 
                   {/* Faecal Length & Colour & Sand Indicators */}
